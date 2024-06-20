@@ -699,9 +699,10 @@ public: // Property - String
 		mii.cbSize = sizeof(mii);
 		mii.fMask = MIIM_STRING;
 		mii.cch = MaxLenNotice;
-		mii.dwTypeData = String::Alloc(mii.cch);
+		WX::String data((size_t)mii.cch);
+		mii.dwTypeData = data;
 		assert(GetMenuItemInfo(hMenu, uID, flags, &mii));
-		return { (size_t)mii.cch, mii.dwTypeData };
+		return data;
 	}
 #pragma endregion
 };

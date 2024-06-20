@@ -142,11 +142,16 @@ public: // Property -
 
 class ChooserFile : protected OPENFILENAME {
 protected:
-	String sCustomFilter;
-	String sFile{ (size_t)MaxLenPath };
-	String sFileTitle;
+	String strCustomFilter;
+	String strFile{ (size_t)MaxLenPath };
+	String strFileTitle;
 public:
-	ChooserFile() : OPENFILENAME{ 0 } { this->lStructSize = sizeof(OPENFILENAME); }
+	ChooserFile() : OPENFILENAME{ 0 } {
+		this->lStructSize = sizeof(OPENFILENAME);
+		CustomFilter(strCustomFilter);
+		File(strFile);
+		FileTitle(strFileTitle);
+	}
 
 #pragma region Style
 	enum_flags(Style, DWORD,
@@ -186,30 +191,6 @@ public: // Property - Parent
 public: // Property - Module
 	/* W */ inline auto   &Module(HINSTANCE hMod) reflect_to_self(this->hInstance = hMod);
 	/* R */ inline CModule Module() const reflect_as((HINSTANCE &)this->hInstance);
-public: // Properties - Filter
-	/* W */ inline auto    &Filter(LPCTSTR lpstrFilter) reflect_to_self(this->lpstrFilter = lpstrFilter);
-	/* R */ inline LPCTSTR  Filter() const reflect_as(this->lpstrFilter);
-public: // Properties - CustomFilter
-	/* W */ inline auto  &CustomFilter(const String &sCustomFilter) reflect_to_self(this->sCustomFilter.Copy(sCustomFilter));
-	/* R */ inline LPTSTR CustomFilter() const reflect_as(this->lpstrCustomFilter);
-public: // Properties - FilterIndex
-	/* W */ inline auto  &FilterIndex(DWORD nFilterIndex) reflect_to_self(this->nFilterIndex = nFilterIndex);
-	/* R */ inline DWORD  FilterIndex() const reflect_as(this->nFilterIndex);
-public: // Properties - File
-	/* W */ inline auto        &File(const String &sFile) reflect_to_self(this->sFile.Copy(sFile));
-	/* R */ inline const String File() const reflect_as(CString(this->lpstrFile, MaxLenPath));
-public: // Properties - FileTitle
-	/* W */ inline auto        &FileTitle(const String &sFileTitle) reflect_to_self(this->sFileTitle.Copy(sFileTitle));
-	/* R */ inline const String FileTitle() const reflect_as(CString(this->lpstrFileTitle, MaxLenPath));
-public: // Properties - MaxFileTitle
-	/* W */ inline auto &MaxFileTitle(DWORD nMaxFileTitle) reflect_to_self(this->nMaxFileTitle = nMaxFileTitle);
-	/* R */ inline DWORD MaxFileTitle() const reflect_as(this->nMaxFileTitle);
-public: // Properties - InitialDir
-	/* W */ inline auto        &InitialDir(LPCTSTR lpstrInitialDir) reflect_to_self(this->lpstrInitialDir = lpstrInitialDir);
-	/* R */ inline const String InitialDir() const reflect_as(CString(this->lpstrInitialDir, MaxLenPath));
-public: // Properties - Title
-	/* W */ inline auto        &Title(LPCTSTR lpstrTitle) reflect_to_self(this->lpstrTitle = lpstrTitle);
-	/* R */ inline const String Title() const reflect_as(CString(this->lpstrTitle, MaxLenTitle));
 public: // Properties - Style
 	/* W */ inline auto &Styles(Style Flags) reflect_to_self(this->Flags = Flags.yield());
 	/* R */ inline Style Styles() const reflect_as(force_cast<Style>(this->Flags));
@@ -217,6 +198,30 @@ public: // Properties - FileOffset
 	/* R */ inline WORD FileOffset() const reflect_as(this->nFileOffset);
 public: // Properties - FileExtension
 	/* R */ inline WORD FileExtension() const reflect_as(this->nFileExtension);
+public: // Properties - File
+	/* W */ inline ChooserFile &File(String &strFile) reflect_to_self(this->lpstrFile = this->strFile = strFile, this->nMaxFile = (DWORD)this->strFile.Length());
+	/* W */ inline ChooserFile &File(String &&strFile) reflect_to_self(this->lpstrFile = this->strFile = strFile, this->nMaxFile = (DWORD)this->strFile.Length());
+	/* R */ inline auto        &File() const reflect_as(this->strFile);
+public: // Properties - FileTitle
+	/* W */ inline ChooserFile &FileTitle(String &strFileTitle) reflect_to_self(this->lpstrFileTitle = this->strFileTitle = strFileTitle, this->nMaxFileTitle = (DWORD)this->strFileTitle);
+	/* W */ inline ChooserFile &FileTitle(String &&strFileTitle) reflect_to_self(this->lpstrFileTitle = this->strFileTitle = strFileTitle, this->nMaxFileTitle = (DWORD)this->strFileTitle);
+	/* R */ inline auto        &FileTitle() const reflect_as(this->strFileTitle);
+public: // Properties - CustomFilter
+	/* W */ inline ChooserFile &CustomFilter(String &strCustomFilter) reflect_to_self(this->lpstrCustomFilter = this->strCustomFilter = strCustomFilter, this->nMaxCustFilter = (DWORD)this->strCustomFilter.Length());
+	/* W */ inline ChooserFile &CustomFilter(String &&strCustomFilter) reflect_to_self(this->lpstrCustomFilter = this->strCustomFilter = strCustomFilter, this->nMaxCustFilter = (DWORD)this->strCustomFilter.Length());
+	/* R */ inline auto        &CustomFilter() const reflect_as(this->strCustomFilter);
+public: // Properties - Filter
+	/* W */ inline auto   &Filter(LPCTSTR lpstrFilter) reflect_to_self(this->lpstrFilter = lpstrFilter);
+	/* R */ inline LPCTSTR Filter() const reflect_as(this->lpstrFilter);
+public: // Properties - FilterIndex
+	/* W */ inline auto &FilterIndex(DWORD nFilterIndex) reflect_to_self(this->nFilterIndex = nFilterIndex);
+	/* R */ inline DWORD FilterIndex() const reflect_as(this->nFilterIndex);
+public: // Properties - InitialDir
+	/* W */ inline auto        &InitialDir(LPCTSTR lpstrInitialDir) reflect_to_self(this->lpstrInitialDir = lpstrInitialDir);
+	/* R */ inline const String InitialDir() const reflect_as(CString(this->lpstrInitialDir, MaxLenPath));
+public: // Properties - Title
+	/* W */ inline auto        &Title(LPCTSTR lpstrTitle) reflect_to_self(this->lpstrTitle = lpstrTitle);
+	/* R */ inline const String Title() const reflect_as(CString(this->lpstrTitle, MaxLenTitle));
 public: // Properties - DefExt
 	/* R */ inline const String DefExt() const reflect_as(CString(this->lpstrDefExt, MaxLenTitle));
 public: // Property - Name
@@ -224,22 +229,8 @@ public: // Property - Name
 	/* R */ inline const String Name() const reflect_as(CString(this->lpTemplateName, MaxLenTitle));
 #pragma endregion
 
-private:
-	inline void __SetBuffer() {
-		this->lpstrFile = sFile; this->nMaxFile = (DWORD)sFile.Length();
-		this->lpstrFileTitle = sFileTitle; this->nMaxFileTitle = (DWORD)sFileTitle.Length();
-		this->lpstrCustomFilter = sCustomFilter; this->nMaxCustFilter = (DWORD)sCustomFilter.Length();
-	}
-public:
-
-	inline bool OpenFile() {
-		__SetBuffer();
-		return GetOpenFileName(this);
-	}
-	inline bool SaveFile() {
-		__SetBuffer();
-		return GetSaveFileName(this);
-	}
+	inline bool OpenFile() reflect_as(GetOpenFileName(this));
+	inline bool SaveFile() reflect_as(GetSaveFileName(this));
 };
 
 #pragma region Dialog Template

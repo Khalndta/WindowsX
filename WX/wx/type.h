@@ -203,12 +203,11 @@ enum_class(CodePages, UINT,
 	ThreadActive = CP_THREAD_ACP,
 	Symbol       = CP_SYMBOL,
 	UTF7         = CP_UTF7,
-	UTF8         = CP_UTF8
-);
-using LPCRSTR = std::conditional_t<IsUnicode, LPCSTR, LPCWSTR>;
-using LPRSTR = std::conditional_t<IsUnicode, LPSTR, LPWSTR>;
-template<size_t len> using TChars = TCHAR[len];
-enum StrFlags : uintptr_t {
+	UTF8         = CP_UTF8);
+using ACHAR = std::conditional_t<IsUnicode, CHAR, WCHAR>;
+using LPASTR = std::conditional_t<IsUnicode, LPSTR, LPWSTR>;
+using LPCASTR = std::conditional_t<IsUnicode, LPCSTR, LPCWSTR>;
+enum StrFlags : size_t {
 	STR_DEF = 0,
 	STR_READONLY = 1,
 	STR_MOVABLE = 2,
@@ -237,16 +236,37 @@ public:
 	String(const String &) = delete;
 	String(String &str) : String(str.Len, str.Flags, str.lpszStr) { str.Len = 0, str.Flags = STR_DEF, str.lpszStr = 0; }
 	String(String &&str) : String(str.Len, str.Flags, str.lpszStr) { str.Len = 0, str.Flags = STR_DEF, str.lpszStr = 0; }
-public:
-	String(TCHAR ch) : lpszStr(Alloc(1)), Len(1), Flags(STR_MOVABLE | STR_RELEASE) reflect_to(lpszStr[0] = ch);
-	template<size_t len> 
-	String(TChars<len> &str) : String(len - 1, 0, str) {}
-	template<size_t len>
-	String(const TChars<len> &str) : lpszStr(String::Alloc(len)), Len(len - 1), Flags(STR_MOVABLE | STR_RELEASE) assert(StrCopy(lpszStr, str, len));
-	String(size_t len, LPTSTR str) : String(len, STR_MOVABLE | STR_RELEASE, str) {}
+
 	explicit String(size_t len) : lpszStr(Alloc(len)), Len(len), Flags(STR_MOVABLE | STR_RELEASE) {}
-public:
-	String(LPCRSTR lpszString, size_t maxLength, CodePages cp = CodePages::Active) {
+	String(size_t len, LPTSTR str) : String(len, STR_MOVABLE | STR_RELEASE, str) {}
+
+	String(ACHAR ch) : lpszStr(Alloc(1)), Len(1), Flags(STR_MOVABLE | STR_RELEASE) reflect_to(lpszStr[0] = (TCHAR)ch);
+	String(TCHAR ch) : lpszStr(Alloc(1)), Len(1), Flags(STR_MOVABLE | STR_RELEASE) reflect_to(lpszStr[0] = ch);
+	template<size_t len> String(TCHAR (&str)[len]) : String(len - 1, STR_DEF, str) {}
+	template<size_t len> String(const TCHAR(&str)[len]) : lpszStr(const_cast<LPTSTR>(str)), Len(len - 1), Flags(STR_READONLY) {}
+	template<size_t len> String(const ConstArray<TCHAR, len> &str) : String(str.array) {}
+	template<size_t len> String(const ACHAR(&str)[len]) : lpszStr(const_cast<LPTSTR>(str)), Len(len - 1), Flags(STR_READONLY) {}
+	template<size_t len> String(const ConstArray<ACHAR, len> &str, CodePages cp = CodePages::Active) : String(str.array, cp) {}
+	template<size_t len> String(const ACHAR(&str)[len], CodePages cp = CodePages::Active) {
+		int tLength;
+#ifdef UNICODE
+		assert((tLength = MultiByteToWideChar(cp.yield(), 0, str, (int)len, O, 0)) > 0);
+#else
+		assert((tLength = WideCharToMultiByte(cp.yield(), 0, str, (int)len, O, 0, O, O)) > 0);
+#endif
+		// if (uLength != tLength) warnning glyphs missing 
+		Len = (UINT)tLength;
+		lpszStr = String::Alloc(Len);
+		Flags = STR_MOVABLE | STR_RELEASE;
+#ifdef UNICODE
+		assert(tLength == MultiByteToWideChar(cp.yield(), 0, str, (int)len, lpszStr, tLength));
+#else
+		assert(tLength == WideCharToMultiByte(cp.yield(), 0, str, (int)len, lpszStr, tLength, O, O));
+#endif
+		lpszStr[Len] = 0;
+	}
+
+	String(LPCASTR lpszString, size_t maxLength, CodePages cp = CodePages::Active) {
 		if (!lpszString || !maxLength) return;
 		size_t uLength = 0;
 #ifdef UNICODE
@@ -294,17 +314,15 @@ public:
 			lpszStr[urLength] = 0;
 		retself;
 	}
-	inline auto &Copy(const String &str) assert_reflect_as_self(StrCopy(lpszStr, str.lpszStr, str.Len));
 public:
-	inline String str_safe() const {
+	inline const String str_safe() const { ////////////////////////////////
 		if (!Len || !lpszStr) return TEXT("");
 		if (!lpszStr[Len]) return &*this;
 		return +*this;
 	}
 	inline size_t Length() const reflect_as(lpszStr ? Len : 0);
 	inline size_t Size() const reflect_as(lpszStr ? (Len + 1) * sizeof(TCHAR) : 0);
-public:
-	///////////////////////////// TODO add assert
+protected:
 	inline static LPTSTR Realloc(size_t len, LPTSTR lpsz) {
 		if (!lpsz && len <= 0) return O;
 		if (len <= 0) {
@@ -318,14 +336,12 @@ public:
 		return (LPTSTR)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, (len + 1) * sizeof(TCHAR));
 	}
 	inline static void Free(void *lpsz) assert_reflect_as(HeapFree(GetProcessHeap(), 0, lpsz));
-	inline static LPTSTR StrCopy(LPTSTR lpszDst, LPCTSTR lpszSrc, size_t maxLen) {
-		SetLastError(StringCchCopyN(lpszDst, maxLen + 1, lpszSrc, maxLen));
-		lpszDst[maxLen] = '\0';
-		return SUCCEEDED(GetLastError()) ? lpszDst : O;
-	}
 public:
 	inline operator bool() const reflect_as(lpszStr && Len);
-	inline operator LPTSTR() reflect_as(Len ? lpszStr : O);
+	inline operator LPTSTR() {
+		assert(!(Flags & STR_READONLY));
+		reflect_as(Len ? lpszStr : O);
+	}
 	inline operator LPCTSTR() const reflect_as(Len ? lpszStr : O);
 	inline LPTSTR operator*() const {
 		if (!lpszStr || !Len) return O;
@@ -415,9 +431,9 @@ inline String Cats() reflect_as(O);
 template<class... Args>
 inline String Cats(const String &str, const Args &... args) {
 	if (auto uLength = LengthOf<const String &, const Args &...>(str, args...)) {
-		auto lpString = String::Alloc(uLength);
-		*Copies(lpString, str, args...) = 0;
-		return{ uLength, lpString };
+		String str(uLength);
+		*Copies(str, str, args...) = 0;
+		return str;
 	}
 	return O;
 }

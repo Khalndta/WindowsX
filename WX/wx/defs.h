@@ -131,7 +131,6 @@ public:
 	Exception(LPCTSTR lpszLine) :
 		lpszLine(lpszLine), dwErrCode(GetLastError()) {}
 };
-
 #define assert(line) \
 { if (!(line)) throw Exception(TEXT(#line)); }
 
@@ -143,55 +142,68 @@ struct ZRegexX {
 	using HP_CSTR = const LP_CSTR;
 
 #pragma region Offsets
-	template<AnyChar st, AnyChar ed = st>
-	static constexpr bool is(AnyChar ch) reflect_as(st <= ed ? (st <= ch && ch <= ed) : (st < ch || ch < ed));
-	template<AnyChar...chs>
-	static constexpr bool in(AnyChar ch) reflect_as(((ch == chs) || ...));
+	static constexpr bool is(AnyChar ch, AnyChar st, AnyChar ed) reflect_as(st <= ed ? (st <= ch && ch <= ed) : (st < ch || ch < ed));
+	static constexpr bool is(AnyChar ch, LP_CSTR lpclDct, size_t len, size_t ind = 0) reflect_as(
+		_if (ind >= len)
+			_return false
+		_elif (is(ch, lpclDct[0], lpclDct[len]))
+			_return true
+		_else
+			_return is(ch, lpclDct + 1, len, ind + 1)
+	);
+	static constexpr bool in(AnyChar ch, LP_CSTR lpclDct, size_t len) reflect_as(
+		_if (len <= 1)
+			_return false
+		_elif (ch == lpclDct[0])
+			_return true
+		_else
+			_return in(ch, lpclDct + 1, len - 1)
+	);
 
-	static constexpr bool is_09(AnyChar ch) reflect_as(is<'0', '9'>(ch));
-	static constexpr bool is_AZ(AnyChar ch) reflect_as(is<'A', 'Z'>(ch));
-	static constexpr bool is_az(AnyChar ch) reflect_as(is<'a', 'z'>(ch));
-	static constexpr bool is_Az(AnyChar ch) reflect_as(is_AZ(ch) || is_az(ch));
-	static constexpr bool is_Word(AnyChar ch) reflect_as(is_Az(ch) || is_09(ch) || ch == '_');
-	static constexpr bool is_Space(AnyChar ch) reflect_as(in<' ', '\t'>(ch));
-	static constexpr bool is_Blank(AnyChar ch) reflect_as(is_Space(ch) || in<'\n', '\r'>(ch));
+	//static constexpr bool is_09(AnyChar ch) reflect_as(is<'0', '9'>(ch));
+	//static constexpr bool is_AZ(AnyChar ch) reflect_as(is<'A', 'Z'>(ch));
+	//static constexpr bool is_az(AnyChar ch) reflect_as(is<'a', 'z'>(ch));
+	//static constexpr bool is_Az(AnyChar ch) reflect_as(is_AZ(ch) || is_az(ch));
+	//static constexpr bool is_Word(AnyChar ch) reflect_as(is_Az(ch) || is_09(ch) || ch == '_');
+	//static constexpr bool is_Space(AnyChar ch) reflect_as(in<' ', '\t'>(ch));
+	//static constexpr bool is_Blank(AnyChar ch) reflect_as(is_Space(ch) || in<'\n', '\r'>(ch));
 
-	static constexpr HP_CSTR OffsetProtoWord(LP_CSTR lpcl, HP_CSTR lpch) reflect_as(
-		_if (is_Word(lpcl[0]))
-			_return OffsetProtoWord(lpcl + 1, lpch)
-		_else
-			_return lpcl
-	);
-	static constexpr HP_CSTR OffsetWord(LP_CSTR lpcl, HP_CSTR lpch) reflect_as(
-		_if (is_Word(lpcl[0]) && !is_09(lpcl[0]))
-			_return OffsetProtoWord(lpcl + 1, lpch)
-		_else
-			_return lpcl
-	);
-	static constexpr HP_CSTR OffsetNumber(LP_CSTR lpcl, HP_CSTR lpch) reflect_as(
-		_if (is_09(lpcl[0]))
-			_return OffsetNumber(lpcl + 1, lpch)
-		_else
-			_return lpcl
-	);
-	static constexpr HP_CSTR OffsetBlank(LP_CSTR lpcl, HP_CSTR lpch) reflect_as(
-		_if (is_Blank(lpcl[0]))
-			_return OffsetBlank(lpcl + 1, lpch)
-		_else
-			_return lpcl
-	);
-	static constexpr HP_CSTR OffsetSpace(LP_CSTR lpcl, HP_CSTR lpch) reflect_as(
-		_if (is_Space(lpcl[0]))
-			_return OffsetSpace(lpcl + 1, lpch)
-		_else 
-			_return lpcl
-	);
-	static constexpr HP_CSTR OffsetToken(LP_CSTR lpcl, HP_CSTR lpch, LP_CSTR lpclDst, HP_CSTR lpchDst) reflect_as(
-		_if (lpcl[0] == lpclDst[0])
-			_return OffsetToken(lpcl + 1, lpch, lpclDst + 1, lpchDst)
-		_else
-			_return lpcl
-	);
+	//static constexpr HP_CSTR OffsetProtoWord(LP_CSTR lpcl, HP_CSTR lpch) reflect_as(
+	//	_if (is_Word(lpcl[0]))
+	//		_return OffsetProtoWord(lpcl + 1, lpch)
+	//	_else
+	//		_return lpcl
+	//);
+	//static constexpr HP_CSTR OffsetWord(LP_CSTR lpcl, HP_CSTR lpch) reflect_as(
+	//	_if (is_Word(lpcl[0]) && !is_09(lpcl[0]))
+	//		_return OffsetProtoWord(lpcl + 1, lpch)
+	//	_else
+	//		_return lpcl
+	//);
+	//static constexpr HP_CSTR OffsetNumber(LP_CSTR lpcl, HP_CSTR lpch) reflect_as(
+	//	_if (is_09(lpcl[0]))
+	//		_return OffsetNumber(lpcl + 1, lpch)
+	//	_else
+	//		_return lpcl
+	//);
+	//static constexpr HP_CSTR OffsetBlank(LP_CSTR lpcl, HP_CSTR lpch) reflect_as(
+	//	_if (is_Blank(lpcl[0]))
+	//		_return OffsetBlank(lpcl + 1, lpch)
+	//	_else
+	//		_return lpcl
+	//);
+	//static constexpr HP_CSTR OffsetSpace(LP_CSTR lpcl, HP_CSTR lpch) reflect_as(
+	//	_if (is_Space(lpcl[0]))
+	//		_return OffsetSpace(lpcl + 1, lpch)
+	//	_else 
+	//		_return lpcl
+	//);
+	//static constexpr HP_CSTR OffsetToken(LP_CSTR lpcl, HP_CSTR lpch, LP_CSTR lpclDst, HP_CSTR lpchDst) reflect_as(
+	//	_if (lpcl[0] == lpclDst[0])
+	//		_return OffsetToken(lpcl + 1, lpch, lpclDst + 1, lpchDst)
+	//	_else
+	//		_return lpcl
+	//);
 	//static constexpr HP_CSTR OffsetValue(LP_CSTR lpcl, HP_CSTR lpch, size_t Level = 0) reflect_as(
 	//	_if (lpcl[0] == '\0')
 	//		_return lpcl
@@ -212,39 +224,41 @@ struct ZRegexX {
 	//);
 #pragma endregion
 
-	struct Token {
-		LP_CSTR Low;
-		HP_CSTR High;
-		bool Matched = Low < High;
-		bool Catched;
-		constexpr Token(
-			LP_CSTR Low, HP_CSTR High,
-			bool Catched = false) :
-			Low(Low), High(High),
-			Catched(Catched) {}
-		constexpr Token(
-			LP_CSTR Low, HP_CSTR High,
-			bool Catched, bool Matched) :
-			Low(Low), High(High),
-			Matched(Matched), Catched(Catched) {}
-		constexpr auto Length() const reflect_as(HighOff - LowOff);
-		constexpr operator bool() const reflect_as(Matched);
-	};
+	//struct Token {
+	//	LP_CSTR Low;
+	//	HP_CSTR High;
+	//	bool Matched = Low < High;
+	//	bool Catched;
+	//	constexpr Token(
+	//		LP_CSTR Low, HP_CSTR High,
+	//		bool Catched = false) :
+	//		Low(Low), High(High),
+	//		Catched(Catched) {}
+	//	constexpr Token(
+	//		LP_CSTR Low, HP_CSTR High,
+	//		bool Catched, bool Matched) :
+	//		Low(Low), High(High),
+	//		Matched(Matched), Catched(Catched) {}
+	//	constexpr auto Length() const reflect_as(HighOff - LowOff);
+	//	constexpr operator bool() const reflect_as(Matched);
+	//};
 
-	struct Blank { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, is_Blank(Low[0]) ? Low + 1 : Low)); };
-	struct Blanks { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, OffsetBlank(Low, High))); };
-	struct Space { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, is_Space(Low[0]) ? Low + 1 : Low)); };
-	struct Spaces { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, OffsetSpace(Low, High))); };
-	struct Word { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, is_Word(Low[0]) ? Low + 1 : Low)); };
-	struct Words { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, OffsetWord(Low, High))); };
-	struct Number { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, is_09(Low[0]) ? Low + 1 : Low)); };
-	struct Numbers { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, OffsetNumber(Low, High)));) };
+	//struct Blank   { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, is_Blank(Low[0]) ? Low + 1 : Low)); };
+	//struct Blanks  { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, OffsetBlank(Low, High))); };
+	//struct Space   { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, is_Space(Low[0]) ? Low + 1 : Low)); };
+	//struct Spaces  { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, OffsetSpace(Low, High))); };
+	//struct Word    { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, is_Word(Low[0]) ? Low + 1 : Low)); };
+	//struct Words   { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, OffsetWord(Low, High))); };
+	//struct Number  { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, is_09(Low[0]) ? Low + 1 : Low)); };
+	//struct Numbers { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, OffsetNumber(Low, High)));) };
 
-	struct Is {
-		LP_CSTR st, ed;
-		size_t Len = 1;
-		constexpr auto Parse(LP_CSTR Low, HP_CSTR High) {}
-	};
+	//struct Is {
+	//	LP_CSTR st, ed;
+	//	size_t Len = 1;
+	//	constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(
+
+	//	);
+	//};
 	//template<AnyChar...chs>
 	//struct In : Token {
 	//	constexpr In(LP_CSTR lpcStr, size_t LowOff = 0) :
@@ -380,7 +394,6 @@ struct ZRegexX {
 	//			return last.template catchOf<ind>();
 	//	}
 	//};
-
 };
 using ZRegex = ZRegexX<>;
 #pragma endregion
@@ -622,11 +635,6 @@ template<>
 struct TypeList<void> {
 	template<int ind>
 	struct index;
-	//struct index { misuse_assert(ind >= 0, "Index overflowed"); };
-	//template<class ___>
-	//struct index<0, ___> { using type = void; };
-	//template<size_t ind>
-	//using IndexOf = typename index<ind>::type;
 	template<size_t ind>
 	inline void indexof() { misuse_assert(ind >= 0, "index overflowed"); }
 	template<class AnyType>
@@ -690,11 +698,14 @@ public:
 template<class AnyType, size_t Len>
 struct ConstArray {
 	AnyType array[Len];
-	template<size_t xLen, size_t... ind>
-	constexpr ConstArray(const AnyType(&arr)[xLen], std::index_sequence<ind...>, size_t Off = 0) : array{ arr[ind + Off]... } {}
-	template<size_t xLen>
-	constexpr ConstArray(const AnyType(&arr)[xLen], size_t Off = 0) : ConstArray(arr, std::make_index_sequence<Len>{}, Off) {}
+	template<class OtherType, size_t xLen, size_t... ind>
+	constexpr ConstArray(const OtherType(&arr)[xLen], std::index_sequence<ind...>, size_t Off = 0) : array{ (OtherType)arr[ind + Off]... } {}
+	template<class OtherType, size_t xLen>
+	constexpr ConstArray(const OtherType(&arr)[xLen], size_t Off = 0) : ConstArray(arr, std::make_index_sequence<Len>{}, Off) {}
 	static constexpr size_t Length = Len;
+	constexpr operator const arrayof<AnyType, Len>&() const reflect_as(array);
+	template<class OtherType>
+	constexpr operator ConstArray<OtherType, Len>() const reflect_as(array);
 };
 template<class AnyType>
 struct ConstArray<AnyType, 0> {

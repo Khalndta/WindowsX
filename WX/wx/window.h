@@ -886,7 +886,7 @@ public:
 	inline DWORD Log(wchar_t chs) reflect_as(Log((arrayof<wchar_t, 1>&)chs));
 	inline DWORD Log(const String &str) reflect_as(_Write(hOut, str, (DWORD)str.Length()));
 	template<class AnyType>
-	inline DWORD Log(const AnyType &tt) reflect_as(Log(tt.operator String()));
+	inline DWORD Log(const AnyType &tt) reflect_as(Log(String(tt)));
 	template<size_t len>
 	inline DWORD Log(const char(&Chars)[len]) reflect_as(_Write(hOut, Chars, len));
 	template<size_t len>

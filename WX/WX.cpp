@@ -359,17 +359,17 @@ void test_file() {
 	con.Log("Size: ", file.Size(), '\n');
 }
 
-constexpr auto word_t = ZRegex::Words(L"aA123  ");
-constexpr auto word3_t = ZRegex::Rept<ZRegex::And<ZRegex::Words, ZRegex::Blanks>, 3>(L"aA123  aA123 asd ");
-constexpr auto word3_ = word3_t.Matched;
-constexpr auto word3_1 = ZRegex::ReptMax<ZRegex::And<ZRegex::Words, ZRegex::Blanks>>(L"aA123  aA123 asd asd ");
-constexpr auto sizePaa = word3_1.Matched;
-constexpr auto sizeP = word3_1.Times;
-char buf[word3_1.Times] = { 0 };
+constexpr auto a = ZRegex::is('Z', L"Aa0Zz9", 3);
+constexpr auto af = ZRegex::in('Z', L"Aa0Zz9", 6);
+constexpr auto ff = L' ' == ' ';
+
+constexpr auto alfa = ArrayOf("asdsdf");
+constexpr ConstArray<TCHAR, alfa.Length> alfa_t = alfa;
 
 int main(int argc, char *argv[]) {
 	con.Title(T("Windows X"));
-	con.Log(word3_1.Times, '\n');
+	con.Log(alfa, '\n');
+//	con.Log(alfa_t.array, '\n');
 	try {
 //		test_sa();
 		test_file();
