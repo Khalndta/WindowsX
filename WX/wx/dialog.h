@@ -1,5 +1,8 @@
 #pragma once
 
+#include <string>
+#include <vector>
+
 #include "window.h"
 
 namespace WX {
@@ -7,8 +10,8 @@ namespace WX {
 class ChooserColor : protected CHOOSECOLOR {
 protected:
 	COLORREF crCustColors[16] = { 0 };
-	using ColorSet = arrayof<ColorRGB, 16>;
-	using CColorSet = const arrayof<ColorRGB, 16>;
+	using ColorSet = arrayof<RGBColor, 16>;
+	using CColorSet = const arrayof<RGBColor, 16>;
 public:
 
 	ChooserColor() : CHOOSECOLOR{ 0 } {
@@ -46,7 +49,7 @@ public: // Property - Name
 	/* R */ inline const String Name() const reflect_as(CString(this->lpTemplateName, MaxLenTitle));
 public: // Property - Result
 	/* W */ inline auto    &Result(COLORREF rgb) reflect_to_self(this->rgbResult = rgb);
-	/* R */ inline ColorRGB Result() const reflect_as(this->rgbResult);
+	/* R */ inline RGBColor Result() const reflect_as(this->rgbResult);
 //	LPCCHOOKPROC lpfnHook;
 #pragma endregion
 
@@ -129,7 +132,7 @@ public: // Property - PointSize
 	/* R */ inline INT   PointSize() const reflect_as(this->iPointSize);
 public: // Property - Color
 	/* W */ inline auto    &Color(COLORREF rgbColors) reflect_to_self(this->rgbColors = rgbColors);
-	/* R */ inline ColorRGB Color() const reflect_as(this->rgbColors);
+	/* R */ inline RGBColor Color() const reflect_as(this->rgbColors);
 public: // Property - 
 	// LPCFHOOKPROC    lpfnHook;
 	// LPARAM          lCustData;
@@ -142,11 +145,15 @@ public: // Property -
 
 class ChooserFile : protected OPENFILENAME {
 protected:
-	String sCustomFilter;
-	String sFile{ (size_t)MaxLenPath };
-	String sFileTitle;
+//	String strCustomFilter;
+	TCHAR strFile[MaxLenPath];
+//	String strFileTitle;
 public:
-	ChooserFile() : OPENFILENAME{ 0 } { this->lStructSize = sizeof(OPENFILENAME); }
+	ChooserFile() : OPENFILENAME{ 0 } {
+		this->lStructSize = sizeof(OPENFILENAME);
+		this->lpstrFile = strFile;
+		this->nMaxFile = MaxLenPath;
+	}
 
 #pragma region Style
 	enum_flags(Style, DWORD,
@@ -186,30 +193,6 @@ public: // Property - Parent
 public: // Property - Module
 	/* W */ inline auto   &Module(HINSTANCE hMod) reflect_to_self(this->hInstance = hMod);
 	/* R */ inline CModule Module() const reflect_as((HINSTANCE &)this->hInstance);
-public: // Properties - Filter
-	/* W */ inline auto    &Filter(LPCTSTR lpstrFilter) reflect_to_self(this->lpstrFilter = lpstrFilter);
-	/* R */ inline LPCTSTR  Filter() const reflect_as(this->lpstrFilter);
-public: // Properties - CustomFilter
-	/* W */ inline auto  &CustomFilter(const String &sCustomFilter) reflect_to_self(this->sCustomFilter.Copy(sCustomFilter));
-	/* R */ inline LPTSTR CustomFilter() const reflect_as(this->lpstrCustomFilter);
-public: // Properties - FilterIndex
-	/* W */ inline auto  &FilterIndex(DWORD nFilterIndex) reflect_to_self(this->nFilterIndex = nFilterIndex);
-	/* R */ inline DWORD  FilterIndex() const reflect_as(this->nFilterIndex);
-public: // Properties - File
-	/* W */ inline auto        &File(const String &sFile) reflect_to_self(this->sFile.Copy(sFile));
-	/* R */ inline const String File() const reflect_as(CString(this->lpstrFile, MaxLenPath));
-public: // Properties - FileTitle
-	/* W */ inline auto        &FileTitle(const String &sFileTitle) reflect_to_self(this->sFileTitle.Copy(sFileTitle));
-	/* R */ inline const String FileTitle() const reflect_as(CString(this->lpstrFileTitle, MaxLenPath));
-public: // Properties - MaxFileTitle
-	/* W */ inline auto &MaxFileTitle(DWORD nMaxFileTitle) reflect_to_self(this->nMaxFileTitle = nMaxFileTitle);
-	/* R */ inline DWORD MaxFileTitle() const reflect_as(this->nMaxFileTitle);
-public: // Properties - InitialDir
-	/* W */ inline auto        &InitialDir(LPCTSTR lpstrInitialDir) reflect_to_self(this->lpstrInitialDir = lpstrInitialDir);
-	/* R */ inline const String InitialDir() const reflect_as(CString(this->lpstrInitialDir, MaxLenPath));
-public: // Properties - Title
-	/* W */ inline auto        &Title(LPCTSTR lpstrTitle) reflect_to_self(this->lpstrTitle = lpstrTitle);
-	/* R */ inline const String Title() const reflect_as(CString(this->lpstrTitle, MaxLenTitle));
 public: // Properties - Style
 	/* W */ inline auto &Styles(Style Flags) reflect_to_self(this->Flags = Flags.yield());
 	/* R */ inline Style Styles() const reflect_as(force_cast<Style>(this->Flags));
@@ -217,6 +200,32 @@ public: // Properties - FileOffset
 	/* R */ inline WORD FileOffset() const reflect_as(this->nFileOffset);
 public: // Properties - FileExtension
 	/* R */ inline WORD FileExtension() const reflect_as(this->nFileExtension);
+public: // Properties - File
+	/* W */ inline auto &File(const String &strFile) {
+		assert(SUCCEEDED(StringCchCopy(this->strFile, strFile.Length() + 1, strFile)));
+		retself;
+	}
+	/* R */ inline auto &File() const reflect_as(this->strFile);
+//public: // Properties - FileTitle
+//	/* W */ inline ChooserFile &FileTitle(String &strFileTitle) reflect_to_self(this->lpstrFileTitle = this->strFileTitle = strFileTitle, this->nMaxFileTitle = (DWORD)this->strFileTitle);
+//	/* W */ inline ChooserFile &FileTitle(String &&strFileTitle) reflect_to_self(this->lpstrFileTitle = this->strFileTitle = strFileTitle, this->nMaxFileTitle = (DWORD)this->strFileTitle);
+//	/* R */ inline auto        &FileTitle() const reflect_as(this->strFileTitle);
+public: // Properties - CustomFilter
+	///* W */ inline ChooserFile &CustomFilter(String &strCustomFilter) reflect_to_self(this->lpstrCustomFilter = this->strCustomFilter = strCustomFilter, this->nMaxCustFilter = (DWORD)this->strCustomFilter.Length());
+	///* W */ inline ChooserFile &CustomFilter(String &&strCustomFilter) reflect_to_self(this->lpstrCustomFilter = this->strCustomFilter = strCustomFilter, this->nMaxCustFilter = (DWORD)this->strCustomFilter.Length());
+	///* R */ inline auto        &CustomFilter() const reflect_as(this->strCustomFilter);
+public: // Properties - Filter
+	/* W */ inline auto   &Filter(LPCTSTR lpstrFilter) reflect_to_self(this->lpstrFilter = lpstrFilter);
+	/* R */ inline LPCTSTR Filter() const reflect_as(this->lpstrFilter);
+public: // Properties - FilterIndex
+	/* W */ inline auto &FilterIndex(DWORD nFilterIndex) reflect_to_self(this->nFilterIndex = nFilterIndex);
+	/* R */ inline DWORD FilterIndex() const reflect_as(this->nFilterIndex);
+public: // Properties - InitialDir
+	/* W */ inline auto        &InitialDir(LPCTSTR lpstrInitialDir) reflect_to_self(this->lpstrInitialDir = lpstrInitialDir);
+	/* R */ inline const String InitialDir() const reflect_as(CString(this->lpstrInitialDir, MaxLenPath));
+public: // Properties - Title
+	/* W */ inline auto        &Title(LPCTSTR lpstrTitle) reflect_to_self(this->lpstrTitle = lpstrTitle);
+	/* R */ inline const String Title() const reflect_as(CString(this->lpstrTitle, MaxLenTitle));
 public: // Properties - DefExt
 	/* R */ inline const String DefExt() const reflect_as(CString(this->lpstrDefExt, MaxLenTitle));
 public: // Property - Name
@@ -224,179 +233,279 @@ public: // Property - Name
 	/* R */ inline const String Name() const reflect_as(CString(this->lpTemplateName, MaxLenTitle));
 #pragma endregion
 
-private:
-	inline void __SetBuffer() {
-		this->lpstrFile = sFile; this->nMaxFile = (DWORD)sFile.Length();
-		this->lpstrFileTitle = sFileTitle; this->nMaxFileTitle = (DWORD)sFileTitle.Length();
-		this->lpstrCustomFilter = sCustomFilter; this->nMaxCustFilter = (DWORD)sCustomFilter.Length();
-	}
-public:
+	inline bool OpenFile() reflect_as(GetOpenFileName(this));
+	inline bool SaveFile() reflect_as(GetSaveFileName(this));
+};
 
-	inline bool OpenFile() {
-		__SetBuffer();
-		return GetOpenFileName(this);
-	}
-	inline bool SaveFile() {
-		__SetBuffer();
-		return GetSaveFileName(this);
-	}
+class ConfigComm : protected COMMCONFIG {
+	HWND hwndOwner = O;
+public:
+	ConfigComm() : COMMCONFIG{ 0 } {}
+
+#pragma region Properties
+public: // Property - Parent
+	/* W */ inline auto &Parent(HWND hWnd) reflect_to_self(this->hwndOwner = hWnd);
+	/* R */ inline Window Parent() const reflect_as(this->hwndOwner);
+public: // Property - Parent
+#pragma endregion
+
+//	inline bool Config() reflect_as(CommConfigDialog(L"", hwndOwner, this));
 };
 
 #pragma region Dialog Template
-bool PushHeap(void *&pHeap, size_t &maxSize, const void *pData, size_t dataSize) {
-	if (dataSize > maxSize) return true;
-	memcpy_s(pHeap, maxSize, pData, dataSize);
+
+inline void PushHeap(void *&pHeap, size_t &maxSize, const void *pData, size_t dataSize) {
+	assert(dataSize <= maxSize);
+	CopyMemory(pHeap, pData, dataSize);
 	maxSize -= dataSize;
 	(uint8_t *&)pHeap += dataSize;
-	return false;
 }
 template<class AnyType>
-bool PushHeap(void *&pHeap, size_t &maxSize, const AnyType &type) reflect_as(PushHeap(pHeap, maxSize, &type, sizeof(AnyType)));
+inline void PushHeap(void *&pHeap, size_t &maxSize, const AnyType &type)
+{ PushHeap(pHeap, maxSize, &type, sizeof(AnyType)); }
 template<>
-bool PushHeap<String>(void *&pHeap, size_t &maxSize, const String &str) reflect_as(PushHeap(pHeap, maxSize, str, str.Size()));
+inline void PushHeap<std::wstring>(void *&pHeap, size_t &maxSize, const std::wstring &str)
+{ PushHeap(pHeap, maxSize, str.c_str(), str.size() * 2 + 2); }
 
-class DCtl {
+class DialogControl {
 	DLGITEMTEMPLATE dit = { 0 };
-	WORD classId = 0;
-	String className;
-	String caption;
+	std::wstring className;
+	std::wstring caption;
 	WORD sizeParam = 0;
 public:
-	enum_class(C, WORD, 
+	enum_class(Classes, WORD,
 		Button    = 0x0080, // See Microsoft Learn
 		Edit      = 0x0081,
 		Static    = 0x0082,
 		ListBox   = 0x0083,
 		Scrollbar = 0x0084,
 		ComboBox  = 0x0085);
-public:
-	DCtl(C classId) : classId(classId.yield()) {}
-	DCtl(const DCtl &dc) : dit(dc.dit), classId(dc.classId),
-		className(&dc.className), caption(&dc.caption), sizeParam(dc.sizeParam) {}
-	DCtl(LPCTSTR pCaption, C classId = C::Static) :
-		classId(classId.yield()), caption(+CString(pCaption, MaxLenTitle)) {}
-	DCtl(LPCTSTR pCaption, WORD id) : caption(+CString(pCaption, MaxLenTitle)) { dit.id = id; }
-public:
-	inline auto &Style(DWORD style) reflect_to_self(dit.style = style);
-	inline auto &StyleEx(DWORD exStyle) reflect_to_self(dit.dwExtendedStyle = exStyle);
-	inline auto &Position(short x, short y) reflect_to_self(dit.x = x, dit.y = y);
-	inline auto &Size(short cx, short cy) reflect_to_self(dit.cx = cx, dit.cy = cy);
-	inline auto &ID(WORD id) reflect_to_self(dit.id = id);
-	inline auto &Class(LPCTSTR pClassname) reflect_to_self(className = +CString(pClassname, MaxLenClass));
-	inline auto &Caption(LPCTSTR pCaption) reflect_to_self(caption = +CString(pCaption, MaxLenTitle));
+
+	DialogControl(Classes classId) : className({ (wchar_t)classId.yield() }) {}
+	DialogControl(LPCWSTR pCaption, Classes classId = Classes::Static) :
+		className({ (wchar_t)classId.yield() }), caption(pCaption) {}
+	DialogControl(LPCWSTR pCaption, WORD id) : 
+		className({ (wchar_t)id }), caption(pCaption) { dit.id = id; }
+
+#pragma region Properties
+public: // Property - Style
+	template<class AnyStyle>
+	/* W */ inline auto &Style(AnyStyle style) reflect_to_self(dit.style = style.yield());
+public: // Property - StyleEx
+	template<class AnyStyle>
+	/* W */ inline auto &StyleEx(AnyStyle exStyle) reflect_to_self(dit.dwExtendedStyle = exStyle.yield());
+public: // Property - Position
+	/* W */ inline auto &Position(LPoint p) reflect_to_self(dit.x = (SHORT)p.x, dit.y = (SHORT)p.y);
+public: // Property - Size
+	/* W */ inline auto &Size(LSize sz) reflect_to_self(dit.cx = (SHORT)sz.cx, dit.cy = (SHORT)sz.cy);
+public: // Property - ID
+	/* W */ inline auto &ID(WORD id) reflect_to_self(dit.id = id);
+public: // Property - Class
+	/* W */ inline auto &Class(std::wstring className) reflect_to_self(this->className = className);
+	/* W */ inline auto &Class(WORD classId) reflect_to_self(this->className = { (wchar_t)classId });
+public: // Property - Caption
+	/* W */ inline auto &Caption(LPCWSTR lpszCaption) reflect_to_self(this->caption = lpszCaption);
+#pragma endregion
+
 private:
-	friend class DBox;
-	size_t HeapSize() {
+	friend class DialogFactory;
+	inline size_t HeapSize() {
 		return
-			sizeof(dit) +
-			(classId ? sizeof(WORD) + sizeof(classId) : className.Size()) +
-			caption.Size() +
+			sizeof(DLGITEMTEMPLATE) +
+			(className.size() + caption.size()) * 2 + 2 +
 			sizeof(sizeParam) + sizeParam;
 	}
-	bool PushToHeap(void *&pHeap, size_t &maxSize) {
-		if (PushHeap(pHeap, maxSize, dit))
-			return true;
-		if (classId) {
-			WORD aClassId[2] = { 0xFFFF, classId };
-			if (PushHeap(pHeap, maxSize, aClassId))
-				return true;
+	inline void PushToHeap(void *&pHeap, size_t &maxSize) {
+		PushHeap(pHeap, maxSize, dit);
+		if (className.size() <= 1) {
+			WORD aClassId[2] = { 0xFFFF, className[0] };
+			PushHeap(pHeap, maxSize, aClassId);
 		}
-		elif (PushHeap(pHeap, maxSize, className))
-			return true;
-		if (PushHeap(pHeap, maxSize, caption))
-			return true;
-		if (PushHeap(pHeap, maxSize, sizeParam))
-			return true;
-		return 0;
+		else PushHeap(pHeap, maxSize, className);
+		PushHeap(pHeap, maxSize, caption);
+		PushHeap(pHeap, maxSize, sizeParam);
 	}
 };
-class DBox {
-	DLGTEMPLATE *pHeap = nullptr;
+using DCtl = DialogControl;
+using DClass = DialogControl::Classes;
+class DialogFactory {
 	DLGTEMPLATE dt = { 0 };
-	WORD menuId = 0;
-	String menuName;
-	WORD classId = 0;
-	String className;
-	String caption;
-	std::vector<DCtl> dits;
+	std::wstring menuName;
+	std::wstring className;
+	std::wstring caption;
+	std::vector<DialogControl> dits;
 public:
-	DBox() {}
-	DBox(LPCTSTR pCaption) : caption(+CString(pCaption, MaxLenTitle)) {}
-	~DBox() {
-		if (pHeap) {
-			free(pHeap);
-			pHeap = nullptr;
-		}
-	}
-public:
-	inline auto &Style(DWORD style) reflect_to_self(dt.style = style);
-	inline auto &StyleEx(DWORD exStyle) reflect_to_self(dt.dwExtendedStyle = exStyle);
-	inline auto &Position(short x, short y) reflect_to_self(dt.x = x, dt.y = y);
-	inline auto &Size(short cx, short cy) reflect_to_self(dt.cx = cx, dt.cy = cy);
-	inline auto &Caption(LPCTSTR pCaption) reflect_to_self(caption = +CString(pCaption, MaxLenTitle));
-private:
-	size_t HeapSize0() {
-		return
-			sizeof(dt) +
-			(menuId ? sizeof(WORD) + sizeof(menuId) : menuName.Size()) +
-			(classId ? sizeof(WORD) + sizeof(classId) : className.Size()) +
-			caption.Size() +
-			/************* style & DS_SETFONT ************/ 0;
-	}
-	bool PushToHeap0(void *&pHeap, size_t &maxSize) {
-		if (PushHeap(pHeap, maxSize, dt))
-			return true;
-		if (menuId) {
-			WORD aMenuId[2] = { 0xFFFF, menuId };
-			if (PushHeap(pHeap, maxSize, aMenuId))
-				return true;
-		}
-		elif (PushHeap(pHeap, maxSize, menuName))
-			return true;
-		if (classId) {
-			WORD aClassId[2] = { 0xFFFF, classId };
-			if (PushHeap(pHeap, maxSize, aClassId))
-				return true;
-		}
-		elif (PushHeap(pHeap, maxSize, className))
-			return true;
-		if (PushHeap(pHeap, maxSize, caption))
-			return true;
-		return false;
-	}
+	DialogFactory() {}
+	DialogFactory(LPCWSTR pCaption) : caption(pCaption) {}
+	
+	inline auto &Add(const DialogControl &dc) reflect_to_self(dits.push_back(dc));
+
+#pragma region Properties
+public: // Property - Style
+	template<class AnyStyle>
+	/* W */ inline auto &Style(AnyStyle style) reflect_to_self(dt.style = style.yield());
+public: // Property - StyleEx
+	template<class AnyStyle>
+	/* W */ inline auto &StyleEx(AnyStyle exStyle) reflect_to_self(dt.dwExtendedStyle = exStyle.yield());
+public: // Property - Position
+	/* W */ inline auto &Position(LPoint p) reflect_to_self(dt.x = (SHORT)p.x, dt.y = (SHORT)p.y);
+public: // Property - Size
+	/* W */ inline auto &Size(LSize sz) reflect_to_self(dt.cx = (SHORT)sz.cx, dt.cy = (SHORT)sz.cy);
+public: // Property - Menu
+	/* W */ inline auto &Menu(std::wstring menuName) reflect_to_self(this->menuName = menuName);
+	/* W */ inline auto &Menu(WORD menuId) reflect_to_self(this->menuName = { (wchar_t)menuId });
+public: // Property - Class
+	/* W */ inline auto &Class(std::wstring className) reflect_to_self(this->className = className);
+	/* W */ inline auto &Class(WORD classId) reflect_to_self(this->className = { (wchar_t)classId });
+public: // Property - Caption
+	/* W */ inline auto &Caption(std::wstring caption) reflect_to_self(this->caption = caption);
+#pragma endregion
+
 private:
 	inline size_t HeapSize() {
-		auto size = HeapSize0();
+		auto size = sizeof(DLGTEMPLATE) + (menuName.size() + className.size() + caption.size()) * 2 + 6;
+		// size += 0; //************* style & DS_SETFONT ************/
 		for (auto &dit : dits)
 			size += (dit.HeapSize() + 3) & ~3; // Align to DWORD // See Microsoft Learn for more
 		return size;
 	}
-	inline bool PushToHeap(void *&pHeap, size_t &maxSize) {
-		if (PushToHeap0(pHeap, maxSize))
-			return true;
+	inline void PushToHeap(void *&pHeap, size_t &maxSize) {
+		if (menuName.size() == 1) {
+			WORD aMenuId[2] = { 0xFFFF, menuName[0] };
+			PushHeap(pHeap, maxSize, aMenuId);
+		}
+		else PushHeap(pHeap, maxSize, menuName);
+		if (className.size() == 1) {
+			WORD aClassId[2] = { 0xFFFF, className[0] };
+			PushHeap(pHeap, maxSize, aClassId);
+		}
+		else PushHeap(pHeap, maxSize, className);
+		PushHeap(pHeap, maxSize, caption);
 		for (auto &dit : dits) {
-			if (dit.PushToHeap(pHeap, maxSize))
-				return true;
+			dit.PushToHeap(pHeap, maxSize);
 			// Align to DWORD // See Microsoft Learn for more
-			(uint8_t *&)pHeap += 3;
+			maxSize += 3;
+			maxSize &= ~3;
+			(LONG_PTR &)pHeap += 3;
 			(LONG_PTR &)pHeap &= ~3;
 		}
-		return false;
 	}
 public:
-	inline auto &add(DCtl &&dc) reflect_to_self(dits.push_back(dc));
-	inline operator LPDLGTEMPLATE() {
-		if (pHeap) return pHeap;
+	inline AutoPointer<Heap, DLGTEMPLATE> Make() {
 		auto maxSize = HeapSize();
-		auto pHeap = this->pHeap = (LPDLGTEMPLATE)malloc(maxSize);
-		if (PushToHeap((void *&)pHeap, maxSize)) {
-			DBox::~DBox();
-			return nullptr;
-		}
-		this->pHeap->cdit = (WORD)dits.size();
-		return this->pHeap;
+		AutoPointer<Heap, DLGTEMPLATE> hDlg = { HAF::ZeroInit, maxSize };
+		auto lpDlg = hDlg.Alloc(maxSize);
+		PushHeap((void *&)lpDlg, maxSize, dt);
+		PushToHeap((void *&)lpDlg, maxSize);
+		hDlg->cdit = (WORD)dits.size();
+		return hDlg;
 	}
 };
+using DFact = DialogFactory;
+
+class DialogItem {
+	template<class AnyChild>
+	friend class DialogBase;
+	HWND hDlg = O;
+	int nIDDlgItem = 0;
+protected:
+	DialogItem(HWND hDlg, int nIDDlgItem) :
+		hDlg(hDlg), nIDDlgItem(nIDDlgItem) {}
+public: // Property - Text
+	/* W */ inline auto &Text(LPTSTR lpText) assert_reflect_as_self(SetDlgItemText(hDlg, nIDDlgItem, lpText));
+	/* R */ inline String Text() const {
+		auto len = GetDlgItemText(hDlg, nIDDlgItem, O, 0);
+		if (len <= 0) return O;
+		String text((size_t)len);
+		assert(GetDlgItemText(hDlg, nIDDlgItem, text, len));
+		return text;
+	}
+public: // Property - Int
+	/* W */ inline auto &Int(int val) {
+		bool bSigned = val < 0;
+		if (bSigned) val = -val;
+		assert(SetDlgItemInt(hDlg, nIDDlgItem, val, bSigned));
+		retself;
+	}
+	/* R */ inline int Int(bool bSigned = true) const {
+		BOOL lpTranslated = false;
+		auto val = GetDlgItemInt(hDlg, nIDDlgItem, &lpTranslated, bSigned);
+		assert(lpTranslated);
+		return val;
+	}
+public:
+	template<class AnyWindow>
+	inline operator AnyWindow();
+};
+template<class AnyChild>
+class DialogBase : public WindowBase<AnyChild> {
+public:
+	using super = WindowBase<AnyChild>;
+	using Child = AnyChild;
+
+	def_memberof(Forming);
+	def_memberof(InitDialog);
+
+	DialogBase() {}
+
+	inline INT_PTR Box(HWND hParent = NULL, HINSTANCE hInst = GetModuleHandle(O)) {
+		static_assert(member_Forming_of<Child>::template compatible_to<LPDLGTEMPLATE()>);
+		return DialogBoxIndirectParamW(hInst, child.Forming(), hParent, DlgProc, (LPARAM)this);
+	}
+	inline auto&Create(HWND hParent = NULL, HINSTANCE hInst = GetModuleHandle(O)) {
+		static_assert(member_Forming_of<Child>::template compatible_to<LPDLGTEMPLATE()>);
+		assert(CreateDialogIndirectParamW(hInst, child.Forming(), hParent, DlgProc, (LPARAM)this));
+		retchild;
+	}
+
+	inline auto&End(INT_PTR nResult) reflect_to_child(::EndDialog(self, nResult));
+
+	inline DialogItem Item(int nIDDlgItem) reflect_as({ self, nIDDlgItem });
+
+protected:
+	static INT_PTR CALLBACK DlgProc(HWND hDlg, UINT msgid, WPARAM wParam, LPARAM lParam) {
+		auto &Wnd = super::Attach(hDlg);
+		auto pThis = (Child *)Wnd.UserData();
+		switch (msgid) {
+			case WM_INITDIALOG: {
+				pThis = (Child *)lParam;
+				if (!Wnd.UserData(pThis))
+					return (INT_PTR)false;
+				(HWND &)*force_cast<Window *>(pThis) = hDlg;
+				if constexpr (member_InitDialog_of<Child>::existed) {
+					using fn_type = bool();
+					misdef_assert((member_InitDialog_of<Child>::template compatible_to<fn_type>),
+								  "Member InitDialog must be a method compatible to bool()");
+					return (INT_PTR)pThis->InitDialog();
+				}
+				return (INT_PTR)true;
+			}
+		}
+		if (pThis)
+			try {
+			switch (msgid) {
+				case WM_NULL:
+					break;
+#define _CALL_(name) pThis->name
+#define MSG_TRANS(msgid, ret, name, argslist, args, send, call) \
+					case msgid: \
+						if constexpr (super::template member_##name##_of<Child>::existed) { \
+							using fn_type = ret argslist; \
+							misdef_assert((super::template member_##name##_of<Child>::template compatible_to<fn_type>), \
+										  "Member " #name " must be a method compatible to " #ret #argslist); \
+							call; \
+							return (INT_PTR)true; \
+						} break;
+#include "msg.inl"
+			}
+			if constexpr (super::template member_Callback_of<Child>::existed)
+				return ((Child *)pThis)->Callback(msgid, wParam, lParam);
+		} catch (MSG) {}
+		return (INT_PTR)false;
+	}
+};
+#define Dialog_Based(name) name : public DialogBase<name>
+
 #pragma endregion
 
 }

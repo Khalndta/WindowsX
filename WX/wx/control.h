@@ -19,7 +19,7 @@ public:
 
 	static WndProc DefProc;
 
-	struct xClass : super::template ClassExBase<xClass> {
+	struct xClass : super::template ClassBase<xClass> {
 		xClass() {
 			this->lpszClassName = AnyChild::CtlClassName;
 			assert(this->GetInfo());
@@ -33,11 +33,7 @@ public:
 	struct XCreate :
 		public WindowBase<AnyChild>::template XCreate<KChain<XCreate<_AnyChild, Style, StyleEx>, _AnyChild>, Style, StyleEx> {
 		using super = typename WindowBase<AnyChild>::template XCreate<KChain<XCreate, _AnyChild>, Style, StyleEx>;
-		XCreate(CommCtl &ctl) : super(ctl) {}
-		inline operator bool() {
-			this->style |= WS_CHILD | WS_VISIBLE;
-			return this->Create();
-		}
+		XCreate(CommCtl &ctl) : super(ctl) reflect_to(this->style |= WS_CHILD | WS_VISIBLE);
 	};
 	inline auto Create() = delete;
 	inline auto Create(HWND hParent) {
@@ -432,7 +428,7 @@ public: // Property - UnicodeFormat
 	/* W */ inline auto &UnicodeFormat(bool bUnicode) reflect_to_self(super::Send(SB_SETUNICODEFORMAT, bUnicode));
 	/* R */ inline bool  UnicodeFormat() const reflect_as(super::Send(SB_GETUNICODEFORMAT));
 public: // Property - BkColor
-	/* R */ inline ColorRGB BkColor() const reflect_as(super::template Send<ColorRGB>(SB_SETBKCOLOR));
+	/* R */ inline RGBColor BkColor() const reflect_as(super::template Send<RGBColor>(SB_SETBKCOLOR));
 #pragma endregion
 };
 #pragma endregion
@@ -509,8 +505,8 @@ public:
 //	/* W */ inline auto &DelayTime(CInfo i) { super::Send(TTM_SETDELAYTIME); retchild; }
 //	/* R */ inline CInfo DelayTime() const { CInfo i; super::Send(TTM_GETDELAYTIME); return i; }
 //public: // Property - TipBkColor
-//	/* W */ inline auto    &TipBkColor(ColorRGB rgb) { super::Send(TTM_SETTIPBKCOLOR); retchild; }
-//	/* R */ inline ColorRGB TipBkColor() const reflect_as(super::Send(TTM_GETTIPBKCOLOR));
+//	/* W */ inline auto    &TipBkColor(RGBColor rgb) { super::Send(TTM_SETTIPBKCOLOR); retchild; }
+//	/* R */ inline RGBColor TipBkColor() const reflect_as(super::Send(TTM_GETTIPBKCOLOR));
 //public: // Property - TipTextColor
 //	/* W */ inline auto &TipTextColor(int width) { super::Send(TTM_SETTIPTEXTCOLOR); retchild; }
 //	/* R */ inline int   TipTextColor() const reflect_as(super::Send(TTM_GETTIPTEXTCOLOR));
@@ -538,10 +534,10 @@ struct ColorScheme : protected COLORSCHEME {
 	ColorScheme() : COLORSCHEME{ 0 } { this->dwSize = sizeof(self); }
 public: // Property - Highlight
 	/* W */ inline auto &Highlight(COLORREF cr) reflect_to_self(this->clrBtnHighlight = clrBtnHighlight);
-	/* R */ inline ColorRGB Highlight() const reflect_as(this->clrBtnHighlight);
+	/* R */ inline RGBColor Highlight() const reflect_as(this->clrBtnHighlight);
 public: // Property - Shadow
 	/* W */ inline auto &Shadow(COLORREF cr) reflect_to_self(this->clrBtnShadow = clrBtnShadow);
-	/* R */ inline ColorRGB Shadow() const reflect_as(this->clrBtnShadow);
+	/* R */ inline RGBColor Shadow() const reflect_as(this->clrBtnShadow);
 public:
 	inline operator COLORSCHEME&() reflect_to_self();
 	inline operator const COLORSCHEME &() const reflect_to_self();
@@ -574,10 +570,10 @@ public: // Property - Styles
 	/* R */ inline Style Styles() const reflect_as(force_cast<Style>(this->fStyle));
 public: // Property - Foreground
 	/* W */ inline auto    &Foreground(COLORREF clrFore) reflect_to_self(this->clrFore = clrFore);
-	/* R */ inline ColorRGB Foreground() const reflect_as(this->clrFore);
+	/* R */ inline RGBColor Foreground() const reflect_as(this->clrFore);
 public: // Property - Background
 	/* W */ inline auto    &Background(COLORREF clrBack) reflect_to_self(this->clrBack = clrBack);
-	/* R */ inline ColorRGB Background() const reflect_as(this->clrBack);
+	/* R */ inline RGBColor Background() const reflect_as(this->clrBack);
 //public: // Property - Text
 //	LPWSTR      lpText;
 //	UINT        cch;

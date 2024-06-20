@@ -1,29 +1,55 @@
 ﻿#include "./wx/window.h"
 #include "./wx/control.h"
 #include "./wx/dialog.h"
-#include "./wx/security.h"
 #include "./wx/realtime.h"
 #include "./wx/file.h"
-
 
 using namespace WX;
 
 Console con;
 
+inline void SaveToFile(DC &dc, const Palette &pal, const Bitmap &bmp, File &file) {
+	auto &&log = bmp.Log();
+	bool usePal = log.BitsPerPixel() < 24 && pal;
+	auto usage = usePal ? DIB_PAL_COLORS : DIB_RGB_COLORS;
+	auto palSize = usePal ? (DWORD)std::min(pal.Size(), (size_t)4 << log.BitsPerPixel()) : 0;
+	BitmapHeader header;
+	header.Size(log.Size());
+	header.Planes(log.Planes());
+	header.BitsPerPixel(log.BitsPerPixel());
+	assert(GetDIBits(dc, bmp, 0, log.Height(), O, header, usage));
+	header.PaletteSize(palSize);
+	header.ColorsSize(header.SizeImage());
+	assert(file.Write(&header, sizeof(header) - 4) == sizeof(header) - 4);
+	assert(file.Write(pal.Entries().data(), palSize) == palSize);
+	AutoPointer<Heap> hBits(header.SizeImage());
+	assert(GetDIBits(dc, bmp, 0, log.Height(), &hBits, header, usage));
+	assert(file.Write(&hBits, header.SizeImage()) == header.SizeImage());
+}
+
+inline Bitmap ClipBitmap(const Bitmap &bmp, LRect rc) {
+	auto &&size = rc.size();
+	Bitmap nBmp = Bitmap::Create(size).BitsPerPixel(bmp.Log().BitsPerPixel());
+	DC srcDC = DC::CreateCompatible(), dstDC = DC::CreateCompatible();
+	srcDC.Select(nBmp);
+	dstDC.Select(bmp);
+	srcDC.BltBit(0, size, dstDC);
+	return nBmp;
+}
+
 #pragma region SimDisp
 
 auto
-&&d_ = "d"_nx,
 &&d02_ = "02d"_nx,
 &&d4_ = " 4d"_nx;
 
 typedef struct {
-	uint8_t Left : 1; // MK_LBUTTON
-	uint8_t Middle : 1; // MK_MBUTTON
-	uint8_t Right : 1; // MK_RBUTTON
-	uint8_t Shift : 1; // MK_SHIFT
+	uint8_t Left    : 1; // MK_LBUTTON
+	uint8_t Middle  : 1; // MK_MBUTTON
+	uint8_t Right   : 1; // MK_RBUTTON
+	uint8_t Shift   : 1; // MK_SHIFT
 	uint8_t Control : 1; // MK_CONTROL
-	uint8_t Leave : 1;
+	uint8_t Leave   : 1;
 } tSimDisp_MouseKey;
 
 typedef uint8_t(*tSimDisp_OnResize)(uint16_t nSizeX, uint16_t nSizeY);
@@ -50,7 +76,8 @@ static DC &TayKit(DC &dc, LPoint org, int r) {
 	return dc;
 }
 
-struct Window_Based(SiDiWindow) {
+class Window_Based(SiDiWindow) {
+	friend class WindowBase<SiDiWindow>;
 	LRect Border = 20;
 	struct Window_Based(GraphPanel) {
 		SiDiWindow &parent;
@@ -70,8 +97,38 @@ struct Window_Based(SiDiWindow) {
 				.Parent(parent)
 				.Styles(WStyle::Child | WStyle::Visible);
 		}
+		WX::DC dcBmp = WX::DC::CreateCompatible();
+		void *pbits = O;
+		File bmpBuff = File().CreateMapping()
+			.Security(InheritHandle)
+			.Size(screenSize.cx * screenSize.cy * 4)
+			.Protect(PageAccess::ReadWrite);
+		Bitmap bmp = Bitmap::Create(
+			BitmapHeader()
+				.Size(screenSize)
+				.BitsPerPixel(32)
+				.Planes(1),
+			&pbits, bmpBuff);
+		inline bool OnCreate(CreateStruct cs) {
+			memset(pbits, ~0, screenSize.cx * screenSize.cy * 4);
+			dcBmp.Select(bmp);
+			return true;
+		}
 		inline void OnPaint() {
 			auto &&ps = BeginPaint();
+			auto &&sz = Size();
+			DC()->BltBit(0, sz, dcBmp);
+		}
+		inline bool SaveToFile(LPCTSTR lpFilename) {
+			try {
+				File file = File::Create(lpFilename).CreateAlways().Accesses(FileAccess::GenericWrite);
+				::SaveToFile(DC(), Palette::Default(), ClipBitmap(bmp.Clone(), Size()), file);
+				return true;
+			}
+			catch (WX::Exception err) {
+				con.Log(_T("Error: "), err);
+			}
+			return false;
 		}
 #pragma region Mouse
 		bool OnSetCursor(HWND hwndCursor, UINT codeHitTest, UINT msg) {
@@ -130,81 +187,52 @@ struct Window_Based(SiDiWindow) {
 		IDM_MASK_KEYBOARD,
 		IDM_ABOUT
 	};
-	WX::Menu menu;
+	WX::Menu menu = WX::Menu::Create();
+	StatusBar sbar;
+#pragma region Events
 	inline auto Create() {
 		return super::Create()
 			.Styles(WS::MinimizeBox | WS::Caption | WS::SysMenu | WS::ClipChildren)
 			.Size(500)
 			.Position(100)
-			.Menu(menu.Create()
-				  .Popup(S("&Screen"), MenuPopup()
+			.Menu(menu
+				  .Popup(S("&Screen"), Menu::CreatePopup()
 						 .String(S("&Print Screen"), IDM_PRINTSCREEN)
 						 .Separator()
-						 .String(S("&Resize Screen"), IDM_RESIZE, false)
-						 .String(S("&Invert Screen"), IDM_INVERT, false)
+						 .String(S("&Resize Screen"), IDM_RESIZE, bResizeable)
+						 .String(S("&Invert Screen"), IDM_INVERT, bResizeable)
 						 .Separator()
-						 .Popup(S("&Cursor Control"), MenuPopup()
+						 .Popup(S("&Cursor Control"), Menu::CreatePopup()
 								.Check(S("&Hide Cursor On Screen"), IDM_HIDECURSOR, false)
 								.Check(S("&Lock Mouse On Screen"), IDM_LOCKCURSOR))
 						 .Separator()
 						 .String(S("&Exit"), IDM_EXIT))
-				  .Popup(S("&Event"), MenuPopup()
+				  .Popup(S("&Event"), Menu::CreatePopup()
 						 .Check(S("Mask &Mouse Event"), IDM_MASK_MOUSE, panel.bMaskMouse)
 						 .Check(S("Mask &Touch Event"), IDM_MASK_TOUCH, panel.bMaskTouch)
 						 .Check(S("Mask &Keyboard Event"), IDM_MASK_KEYBOARD, panel.bMaskKeyboard))
-				  .Popup(S("&Help"), MenuPopup()
+				  .Popup(S("&Help"), Menu::CreatePopup()
 						 .String(S("&About"), IDM_ABOUT)));
 	}
-	StatusBar sbar;
+	inline bool OnCreate(CreateStruct cs) {
+		if (!sbar.Create(self)) return false;
+		auto rc = AdjustRect(cs.Rect() + LSize(Border.bottom_right() + Border.top_left()) + LSize(0, sbar.Size().cy));
+		if (!panel.Create()
+			.Position(Border.top_left())
+			.Size(cs.Size())) return false;
+		Move(rc);
+		return true;
+	}
+	inline void OnDestroy() { PostQuitMessage(0); }
 	inline void OnSize(UINT state, int cx, int cy) {
 		auto sz = Size();
 		sbar.SetParts({ sz.cx / 6, 2 * sz.cx / 6, 3 * sz.cx / 6, 4 * sz.cx / 6, -1 });
 		sz = panel.Size();
-		sbar.Text(0, Cats(d_(sz.cx), S("x"), d_(sz.cy)));
+		sbar.Text(0, Cats(sz.cx, S("x"), sz.cy));
 		sbar.FixSize();
 	}
-	inline void OnDestroy() { PostQuitMessage(0); }
-	inline bool OnCreate(LPCREATESTRUCT lpCreate) {
-		if (!sbar.Create(self))
-			return false;
-		auto sz = ClientSize() - Border.bottom_right() - Border.top_left();
-		if (sbar.Enabled())
-			sz.cy -= sbar.Size().cy;
-		if (!panel.Create()
-			.Position(Border.top_left())
-			.Size(sz))
-			return false;
-		return true;
-	}
-	inline void OnCommand(int id, HWND hwndCtl, UINT codeNotify) {
-		switch (id) {
-		case IDM_PRINTSCREEN:
-			SaveScreen();
-			break;
-		case IDM_EXIT:
-			Destroy();
-			break;
-		case IDM_RESIZE:
-			break;
-		case IDM_INVERT:
-			break;
-		case IDM_HIDECURSOR: HideCursor(!panel.bHideCursor); break;
-		case IDM_LOCKCURSOR:
-			break;
-		case IDM_MASK_MOUSE: MaskMouse(!panel.bMaskMouse); break;
-		case IDM_MASK_TOUCH: MaskTouch(!panel.bMaskTouch); break;
-		case IDM_MASK_KEYBOARD: MaskKeyboard(!panel.bMaskKeyboard); break;
-		case IDM_ABOUT:
-			MsgBox(
-				S("About"),
-				S("Simulator Display for embedded OS test\n")
-				S("\tBy Nurtas Ihram"),
-				MB::Ok | MB::IconInformation);
-			break;
-		}
-	}
-	bool bLastIconic = false;
-	bool bResizeable = false;
+	bool bLastIconic = false, bResizeable = false;
+	tSimDisp_OnResize pfnOnResize = O;
 	inline bool OnWindowPosChanging(LPWINDOWPOS Pos) {
 		if (Pos->flags & SWP_NOSIZE)
 			return false;
@@ -221,8 +249,40 @@ struct Window_Based(SiDiWindow) {
 		LSize sz = { Pos->cx - border.cx, Pos->cy - border.cy };
 		if (sz.cx <= 0) Pos->cx = border.cx + 1, sz.cx = 1;
 		if (sz.cy <= 0) Pos->cy = border.cy + 1, sz.cy = 1;
+		if (pfnOnResize)
+			if (!pfnOnResize(sz.cx, sz.cy))
+				return false;
 		panel.Size(sz);
 		return true;
+	}
+	inline void OnCommand(int id, HWND hwndCtl, UINT codeNotify) {
+		switch (id) {
+		case IDM_PRINTSCREEN:
+			PrintScreen();
+			break;
+		case IDM_EXIT:
+			Destroy();
+			break;
+		case IDM_RESIZE:
+			OnResizeBox();
+			break;
+		case IDM_INVERT:
+			Resize(~panel.Size());
+			break;
+		case IDM_HIDECURSOR: HideCursor(!panel.bHideCursor); break;
+		case IDM_LOCKCURSOR:
+			break;
+		case IDM_MASK_MOUSE: MaskMouse(!panel.bMaskMouse); break;
+		case IDM_MASK_TOUCH: MaskTouch(!panel.bMaskTouch); break;
+		case IDM_MASK_KEYBOARD: MaskKeyboard(!panel.bMaskKeyboard); break;
+		case IDM_ABOUT:
+			MsgBox(
+				S("About"),
+				S("Simulator Display for embedded OS test\n")
+				S("\tBy Nurtas Ihram"),
+				MB::Ok | MB::IconInformation);
+			break;
+		}
 	}
 	tSimDisp_OnMouse pfnOnMouse = O;
 	inline void OnPanelMouse(int x, int y, UINT keyFlags, int z = 0) {
@@ -236,7 +296,7 @@ struct Window_Based(SiDiWindow) {
 		mk.Control = bool(keyFlags & MK_CONTROL);
 		mk.Shift = bool(keyFlags & MK_SHIFT);
 		if (x < 0 || y < 0) {
-			sbar.Text(4, S("Mouse leave"));
+			sbar.Text(4, _T("Mouse leave"));
 			mk.Leave = 1;
 		}
 		else
@@ -249,19 +309,88 @@ struct Window_Based(SiDiWindow) {
 		if (pfnOnMouse && !panel.bMaskMouse)
 			pfnOnMouse(x, y, z, mk);
 	}
+	inline void OnResizeBox() {
+		struct Dialog_Based(ResizeBox) {
+			LSize size;
+			ResizeBox(LSize size) : size(size) {}
+			enum {
+				IDE_CX = 0x20,
+				IDE_CY
+			};
+			inline static LPDLGTEMPLATE Forming() {
+				static auto &&hDlg = DFact()
+					.Style(WS::Caption | WS::SysMenu | WS::Popup)
+					.Caption(L"New size")
+					.Size({ 145, 75 })
+					.Add(DCtl(L"&X:")
+						 .Style(WS::Child | WS::Visible | StaticStyle::CenterImage)
+						 .Position({ 24, 12 }).Size({ 14, 14 }))
+					.Add(DCtl(DClass::Edit)
+						 .Style(WS::Child | WS::Visible | EditStyle::Number | WS::TabStop)
+						 .Position({ 42, 12 }).Size({ 72, 14 })
+						 .ID(IDE_CX))
+					.Add(DCtl(L"&Y:")
+						 .Style(WS::Child | WS::Visible | StaticStyle::CenterImage)
+						 .Position({ 24, 30 }).Size({ 72, 14 }))
+					.Add(DCtl(DClass::Edit)
+						 .Style(WS::Child | WS::Visible | EditStyle::Number | WS::TabStop)
+						 .Position({ 42,30 }).Size({ 72, 14 })
+						 .ID(IDE_CY))
+					.Add(DCtl(L"&OK", DClass::Button)
+						 .Style(WS::Child | WS::Visible | WS::TabStop)
+						 .Position({ 18, 48 }).Size({ 50, 14 })
+						 .ID(IDOK))
+					.Add(DCtl(L"&Cancel", DClass::Button)
+						 .Style(WS::Child | WS::Visible | WS::TabStop)
+						 .Position({ 72, 48 }).Size({ 50, 14 })
+						 .ID(IDCANCEL)).Make();
+				return &hDlg;
+			}
+			inline bool InitDialog() {
+				Item(IDE_CX).Int(size.cx);
+				Item(IDE_CY).Int(size.cy);
+				return true;
+			}
+			inline void OnCommand(int id, HWND hwndCtl, UINT codeNotify) {
+				switch (id) {
+					case IDOK:
+						try {
+							LSize sz = { Item(IDE_CX).Int(), Item(IDE_CY).Int() };
+							if (size != sz) size = sz;
+							else id = IDCANCEL;
+						} catch (...) {
+							MsgBox(_T("Failed"), _T("Invalid input"), MB::IconError);
+							id = IDCANCEL;
+						}
+					case IDCANCEL:
+						End(id);
+						break;
+					default:
+						break;
+				}
+			}
+			inline void OnClose() { End(IDCANCEL); }
+		} rsBox = panel.Size();
+		if (rsBox.Box(self) == IDOK)
+			if (!Resize(rsBox.size))
+				MsgBox(_T("Failed"), _T("Resize error"), MB::IconError);
+	}
+#pragma endregion
 public:
-	inline void SaveScreen() {
-		auto &&st = SysTime::SystemTime();
+	static const LSize screenSize;
+	inline bool PrintScreen(LPCTSTR lpFilename) reflect_as(panel.SaveToFile(lpFilename));
+	inline bool PrintScreen() {
 		ChooserFile cf;
 		cf
-			.File(Cats(d_(st.wYear), S("-"), d02_(st.wMonth), S("-"), d02_(st.wDay), S("~"),
-						d02_(st.wHour), d02_(st.wMinute), d02_(st.wSecond), S(".bmp")))
+			.File(Cats(ReplaceAll(SysTime(), _T(":"), _T("-")), S(".bmp")))
 			.Parent(self)
 			.Styles(ChooserFile::Style::Explorer)
 			.Title(S("Printscreen to bitmap"))
 			.Filter(S("Bitmap file (*.bmp)\0*.bmp*\0\0"));
-		if (cf.SaveFile())
-			MsgBox(S("Error"), S("Save bitmap failed"), MB::IconError);
+		if (!cf.SaveFile()) return false;
+		if (PrintScreen(cf.File())) return true;
+		MsgBox(_T("Error"), _T("Save bitmap failed!"), MB::Ok);
+		return false;
 	}
 	inline void Resizeable(bool bResizeable = true) {
 		this->bResizeable = bResizeable;
@@ -271,6 +400,17 @@ public:
 		}
 		if (self)
 			Styles(bResizeable ? Styles() + WS::SizeBox : Styles() - WS::SizeBox);
+	}
+	inline bool Resize(LSize sz) {
+		if (!bResizeable) return false;
+		if (sz.cx == 0 || sz.cy == 0) return false;
+		try {
+			auto rc = AdjustRect(sz + LSize(Border.bottom_right() + Border.top_left()) + LSize(0, sbar.Size().cy));
+			Size(rc);
+			return true;
+		}
+		catch (...) {}
+		return false;
 	}
 	inline void HideCursor(bool bHide) {
 		panel.bHideCursor = bHide;
@@ -292,45 +432,43 @@ public:
 		if (menu)
 			menu(IDM_MASK_KEYBOARD).Check(bMask);
 	}
-	inline void SetOnMouse(tSimDisp_OnMouse pfnOnMouse)
-	{ this->pfnOnMouse = pfnOnMouse; }
+	inline void SetOnResize(tSimDisp_OnResize pfnOnResize) { this->pfnOnResize = pfnOnResize; }
+	inline void SetOnMouse(tSimDisp_OnMouse pfnOnMouse) { this->pfnOnMouse = pfnOnMouse; }
+	inline void Flush() reflect_to(this->Send().OnPaint());
+	inline void *GetBits() reflect_as(panel.pbits);
+	inline CFile GetBitsMapping() reflect_as(panel.bmpBuff);
+	inline LSize ScreenSize() const reflect_as(panel.Size());
+	inline LSize ScreenSizeMax() const reflect_as(screenSize);
 };
 
+const LSize SiDiWindow::screenSize = { GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN) };
+
 bool test_window() {
-	Handle h;
-	SiDiWindow p;
+	try {
+		con.Log("Max size - ", SiDiWindow::screenSize.cx, 'x', SiDiWindow::screenSize.cy, '\n');
+		SiDiWindow p;
 
-	if (!p.Create().Caption(S("Window X By Nurtas Ihram")))
-		return false;
-	
-	p.Update();
-	p.Show();
-	p.Resizeable(true);
+		if (!p.Create().Size({ 400, 300 }).Caption(S("Window X By Nurtas Ihram")))
+			return false;
 
-	MSG msg;
- 	while (GetMessage(&msg, 0, 0, 0)) {
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
+		p.Update();
+		p.Show();
+		p.Resizeable(true);
+
+		MSG msg;
+		while (GetMessage(&msg, 0, 0, 0)) {
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
 	}
+	catch (WX::Exception err) {
+		con.Log(_T("Error: "), err);
+	}
+
 	return true;
 }
 
 #pragma endregion
-
-void test_sa() {
-	Event evt = Event::Create().Security(SecAttr().Descriptor(SecDesc().Discretion(AceList{
-		AccessExplicit()
-			.Permissions(AccessPermission::Read)
-			.Trust(SecID(SecAuthorIDs::World, SECURITY_WORLD_RID))
-			.TrustBy(TrustTypes::WellKnownGroup),
-		AccessExplicit()
-			.Permissions(AccessPermission::AllAccess)
-			.Trust(SecID(SecAuthorIDs::NT, SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_ADMINS))
-			.TrustBy(TrustTypes::Group)
-	})));
-	if (evt)
-		con("\nCreated\n");
-}
 
 void test_thread() {
 	struct Thread_Bsaed(__) {
@@ -348,38 +486,47 @@ void test_proc() {
 	con.Log("\nEnvironments: \n");
 	for (const String &s : Environments::Current().Entries())
 		con.Log("set ", s, '\n');
-	con.Log(Environment[T("path")].ValueExpend());
-	Process prc = Process::Create(O, T("cmd.exe ")).NewConsole();
+	con.Log(Environment[_T("path")].ValueExpend());
+	Process prc = Process::Create(O, _T("cmd.exe ")).NewConsole();
 	Sleep(5000);
 	prc.Terminate();
 }
 
 void test_file() {
-	File file = File::Create(T("WX.cpp")).OpenExisting();
+	File file = File::Create(_T("WX.cpp")).OpenExisting();
+	con.Log("Date & Time: ", file.Times().Created, '\n');
 	con.Log("Size: ", file.Size(), '\n');
 }
 
-constexpr auto word_t = ZRegex::Words(L"aA123  ");
-constexpr auto word3_t = ZRegex::Rept<ZRegex::And<ZRegex::Words, ZRegex::Blanks>, 3>(L"aA123  aA123 asd ");
-constexpr auto word3_ = word3_t.Matched;
-constexpr auto word3_1 = ZRegex::ReptMax<ZRegex::And<ZRegex::Words, ZRegex::Blanks>>(L"aA123  aA123 asd asd ");
-constexpr auto sizePaa = word3_1.Matched;
-constexpr auto sizeP = word3_1.Times;
-char buf[word3_1.Times] = { 0 };
+// void test_comm() {
+// 	for (auto id : Comm::Ports())
+// 		con.Log("COM", id, "\n");
+// 	Comm com = 15;
+// 	com.Setup(2048, 2048);
+// 	com.Timeouts(CommTimeout().WriteTotal({ 50, 2000 }));
+// 	com.State(_T("baud=115200 parity=N data=8 stop=1"));
+// 	com.Events(CommEvent::RxChar);
+// 	com.Purge(CommClear::All);
+// 	for (;;) {
+// 		auto evt = com.WaitEvents();
+// 		if (evt == CommEvent::RxChar) {
+// 		}
+// 	}
+// //	con.Log(com.State().BaudRate(), "\n");
+// }
 
 int main(int argc, char *argv[]) {
-	con.Title(T("Windows X"));
-	con.Log(word3_1.Times, '\n');
+	con.Title(_T("Windows X"));
+	con.Log("System Time: ", SysTime(), '\n');
 	try {
 //		test_sa();
-		test_file();
+//		test_file();
 //		test_thread();
 //		test_proc();
-//		test_window();
-	} catch (Exception err) {
-		con.Log('\n', " : ", CString(err.lpszLine, 1024), '\n');
+//		test_comm();
+		test_window();
+	} catch (WX::Exception err) {
+		con.Log(_T("Error: "), err);
 	}
-
-	getchar();
 	return 0;
 }

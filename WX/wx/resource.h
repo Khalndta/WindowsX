@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include "./type.h"
 
 namespace WX {
@@ -39,6 +41,9 @@ public:
 
 	inline operator BaseHandle() const reflect_as(reuse_as<BaseHandle>(hobj));
 
+	inline Child &operator=(Child &obj) reflect_to_child(std::swap(obj.hobj, hobj));
+	inline Child &operator=(Child &&obj) reflect_to_child(std::swap(obj.hobj, hobj));
+
 	inline static auto &Attach(BaseHandle &hObj) reflect_as(reuse_as<AnyChild>(hObj));
 	inline static const auto &Attach(const BaseHandle &hObj) reflect_as(reuse_as<const AnyChild>(hObj));
 };
@@ -47,9 +52,78 @@ using CGObject = RefAs<GObject>;
 #pragma endregion
 
 #pragma region Bitmap
+enum_class(BitmapCompressions, DWORD,
+	RGB         = BI_RGB,
+	RLE8        = BI_RLE8,
+	RLE4        = BI_RLE4,
+	BitFields   = BI_BITFIELDS,
+	JPEG        = BI_JPEG,
+	PNG         = BI_PNG);
+#pragma pack(2)
+struct BitmapHeader : protected BITMAPFILEHEADER, protected BITMAPINFO {
+	BitmapHeader() : BITMAPFILEHEADER{ 0 }, BITMAPINFO{ { 0 } } {
+		this->bfType = *(const WORD *)"BM";
+		this->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+		this->bmiHeader.biCompression = BI_RGB;
+	}
+public: // Property - PaletteSize
+	/* W */ inline auto &PaletteSize(DWORD dwSize) reflect_to_self(this->bfOffBits = dwSize + sizeof(*this) - 4);
+	/* R */ inline DWORD PaletteSize() const reflect_as(this->bfOffBits - sizeof(*this) - 4);
+public: // Property - ColorsSize
+	/* W */ inline auto &ColorsSize(DWORD dwSize) reflect_to_self(this->bfSize = this->bfOffBits + dwSize);
+	/* R */ inline DWORD ColorsSize() const reflect_as(this->bfSize - this->bfOffBits);
+public: // Property - FileSize
+	/* R */ inline DWORD FileSize() const reflect_as(this->bfSize);
+public: // Property - Width
+	/* W */ inline auto &Width(LONG biWidth) reflect_to_self(this->bmiHeader.biWidth = biWidth);
+	/* R */ inline LONG  Width() const reflect_as(this->bmiHeader.biWidth);
+public: // Property - Height
+	/* W */ inline auto &Height(LONG biHeight) reflect_to_self(this->bmiHeader.biHeight = biHeight);
+	/* R */ inline LONG  Height() const reflect_as(this->bmiHeader.biHeight);
+public: // Property - Size
+	/* W */ inline auto &Size(LSize sz) reflect_to_self(bmiHeader.biWidth = sz.cx, bmiHeader.biHeight = sz.cy);
+	/* R */ inline LSize Size() const reflect_as({ bmiHeader.biWidth, bmiHeader.biHeight });
+public: // Property - Compression
+	/* W */ inline auto &Compression(BitmapCompressions biCompression) reflect_to_self(this->bmiHeader.biCompression = biCompression.yield());
+	/* R */ inline BitmapCompressions Compression() const reflect_as(force_cast<BitmapCompressions>(this->bmiHeader.biCompression));
+public: // Property - SizeImage
+	/* R */ inline DWORD SizeImage() const reflect_as(this->bmiHeader.biSizeImage);
+public: // Property - PixelsPerMeter
+	/* W */ inline auto &PixelsPerMeter(LSize sz) reflect_to_self(bmiHeader.biXPelsPerMeter = sz.cx, bmiHeader.biYPelsPerMeter = sz.cy);
+	/* R */ inline LSize PixelsPerMeter() const reflect_as({ bmiHeader.biXPelsPerMeter, bmiHeader.biYPelsPerMeter });
+public: // Property - Planes
+	/* W */ inline auto &Planes(WORD biPlanes) reflect_to_self(this->bmiHeader.biPlanes = biPlanes);
+	/* R */ inline WORD  Planes() const reflect_as(this->bmiHeader.biPlanes);
+public: // Property - BitsPerPixel
+	/* W */ inline auto &BitsPerPixel(WORD biBitCount) reflect_to_self(this->bmiHeader.biBitCount = biBitCount);
+	/* R */ inline WORD  BitsPerPixel() const reflect_as(this->bmiHeader.biBitCount);
+public: // Property - ColorUsed
+	/* W */ inline auto &ColorUsed(DWORD biClrUsed) reflect_to_self(this->bmiHeader.biClrUsed = biClrUsed);
+	/* R */ inline DWORD ColorUsed() const reflect_as(this->bmiHeader.biClrUsed);
+public: // Property - ColorImportant
+	/* W */ inline auto &ColorImportant(DWORD biClrImportant) reflect_to_self(this->bmiHeader.biClrImportant = biClrImportant);
+	/* R */ inline DWORD ColorImportant() const reflect_as(this->bmiHeader.biClrImportant);
+public: // Property - PaletteStart
+	// /* W */ inline auto PaletteStart() reflect_to_self(this->bmiColors);
+	/* R */ inline auto PaletteStart() const reflect_as(this->bmiColors);
+public: // Property - Colors
+	// /* W */ inline void *ColorsStart() reflect_to_self(((uint8_t *)PaletteStart()) + PaletteSize());
+	/* R */ inline void *ColorsStart() const reflect_as(((uint8_t *)PaletteStart()) + PaletteSize());
+public:
+	inline operator LPBITMAPFILEHEADER() reflect_as(this);
+	inline operator const BITMAPFILEHEADER *() const reflect_as(this);
+	inline operator LPBITMAPINFO() reflect_as(this);
+	inline operator const BITMAPINFO *() const reflect_as(this);
+};
+#pragma pack()
 class GDI_Based(Bitmap, HBITMAP) {
+	friend union RefAs<Bitmap>;
+	Bitmap(HBITMAP h) : super(h) {}
 public:
 	using super = GObjectBase<Bitmap, HBITMAP>;
+	using Header = BitmapHeader;
+	using File = BitmapHeader;
+
 	struct Logic : protected BITMAP {
 		Logic() : BITMAP{ 0 } {}
 	public: // Property - Width
@@ -67,9 +141,9 @@ public:
 	public: // Property - Planes
 		/* W */ inline auto &Planes(WORD bmPlanes) reflect_to_self(this->bmPlanes = bmPlanes);
 		/* R */ inline WORD  Planes() const reflect_as(this->bmPlanes);
-	public: // Property - BitsPixel
-		/* W */ inline auto &BitsPixel(WORD bmBitsPixel) reflect_to_self(this->bmBitsPixel = bmBitsPixel);
-		/* R */ inline WORD  BitsPixel() const reflect_as(this->bmBitsPixel);
+	public: // Property - BitsPerPixel
+		/* W */ inline auto &BitsPerPixel(WORD bmBitsPixel) reflect_to_self(this->bmBitsPixel = bmBitsPixel);
+		/* R */ inline WORD  BitsPerPixel() const reflect_as(this->bmBitsPixel);
 	public: // Property - Colors
 		/* W */ inline auto &Colors(LPVOID bmBits) reflect_to_self(this->bmBits = bmBits);
 		/* R */ inline LPVOID Colors() const reflect_as(this->bmBits);
@@ -98,7 +172,7 @@ public:
 		/* W */ inline auto &Planes(UINT nPlanes) reflect_to_self(this->nPlanes = nPlanes);
 		/* R */ inline UINT  Planes() const reflect_as(this->nPlanes);
 	public: // Property - BitsPerPixel
-		/* W */ inline auto &BitsPerPixel(UINT BitsPerPixel) reflect_to_self(this->nBitsPerPixel = nBitsPerPixel);
+		/* W */ inline auto &BitsPerPixel(UINT nBitsPerPixel) reflect_to_self(this->nBitsPerPixel = nBitsPerPixel);
 		/* R */ inline UINT  BitsPerPixel() const reflect_as(this->nBitsPerPixel);
 	public: // Property - Colors
 		/* W */ inline auto &Colors(LPCVOID lpBits) reflect_to_self(this->lpBits = lpBits);
@@ -110,25 +184,39 @@ public:
 
 	Bitmap() {}
 	Bitmap(Null) {}
-	Bitmap(Bitmap & bmp) : super(bmp) {}
-	Bitmap(Bitmap && bmp) : super(bmp) {}
+	Bitmap(Bitmap &bmp) : super(bmp) {}
+	Bitmap(Bitmap &&bmp) : super(bmp) {}
 	Bitmap(const Bitmap &) = delete;
 	~Bitmap() reflect_to(Destroy());
 
+	using super::operator=;
+
+	inline Logic Log() const reflect_to(Logic log, GetObject(self, sizeof(log), reinterpret_cast<LPSTR>(&log)), log);
+
 	inline bool Destroy() reflect_as(super::Delete());
+
+	inline static Bitmap Create(const BITMAPINFO *pbi, void **ppbits, HANDLE hSection = O, DWORD offset = 0) assert_reflect_as(auto h = CreateDIBSection(O, pbi, DIB_RGB_COLORS, ppbits, hSection, offset), h);
+	inline static Bitmap Create(const BITMAPINFO *pbi, HANDLE hSection = O, DWORD offset = 0) assert_reflect_as(auto h = CreateDIBSection(O, pbi, DIB_RGB_COLORS, O, hSection, offset), h);
 	inline static CreateStruct Create(LSize s = 0) reflect_as(s);
+	inline static Bitmap From(HDC hDC, LSize s) reflect_as(CreateCompatibleBitmap(hDC, s.cx, s.cy));
+
+	inline auto &Restretch(LSize sz) assert_reflect_as_self((super::hobj = (HBITMAP)CopyImage(self, IMAGE_BITMAP, sz.cx, sz.cy, LR_DEFAULTSIZE)));
+	inline Bitmap StretchNew(LSize sz) const assert_reflect_as(auto h = (HBITMAP)CopyImage(self, IMAGE_BITMAP, sz.cx, sz.cy, LR_DEFAULTCOLOR), h);
+	inline Bitmap Clone() const reflect_as(StretchNew(Size()));
 
 #pragma region Properties
 public: // Property - Size
-	/* R */ inline LSize Size() assert_reflect_to(LSize sz, GetBitmapDimensionEx(self, &sz), sz);
+	/* R */ inline LSize Size() const assert_reflect_to(LSize sz, GetBitmapDimensionEx(self, &sz), sz);
+public: // Property - SizeBytes
+	/* R */ inline size_t SizeBytes() const {
+		auto &&log = Log();
+		return (((log.Width() * log.Planes() /* nPlanes */ * log.BitsPerPixel() /* nBitCount */ + 15) >> 4) << 1) * log.Height();
+	}
 public: // Property - Colors
-	/* R */ inline auto &GetColors(void *lpBits, DWORD cb) const assert_reflect_as_self(GetBitmapBits(self, cb, lpBits));
+	/* W */ inline auto &GetColors(void *lpBits, DWORD cb) const assert_reflect_as_self(GetBitmapBits(self, cb, lpBits));
 	/* R */ inline auto &SetColors(const void *lpBits, DWORD cb) assert_reflect_as_self(SetBitmapBits(self, cb, lpBits));
 #pragma endregion
 
-protected:
-	friend union RefAs<Bitmap>;
-	Bitmap(HBITMAP h) : super(h) {}
 };
 using BitmapLogic = Bitmap::Logic;
 using CBitmap = RefAs<Bitmap>;
@@ -138,6 +226,9 @@ using CBitmap = RefAs<Bitmap>;
 struct Pen;
 using CPen = RefAs<Pen>;
 struct GDI_Based(Pen, HPEN) {
+	friend union RefAs<Pen>;
+	Pen(HPEN hPen) : super(hPen) {}
+public:
 	using super = GObjectBase<Pen, HPEN>;
 
 	Pen() {}
@@ -145,25 +236,23 @@ struct GDI_Based(Pen, HPEN) {
 	Pen(Pen &pen) : super(pen) {}
 	Pen(Pen &&pen) : super(pen) {}
 	Pen(const Pen &) = delete;
+	
+	using super::operator=;
 
 	inline static Pen White() reflect_as((HPEN)::GetStockObject(WHITE_PEN));
 	inline static Pen Black() reflect_as((HPEN)::GetStockObject(BLACK_PEN));
 	inline static Pen Null()  reflect_as((HPEN)::GetStockObject(NULL_PEN));
 	inline static Pen DC()    reflect_as((HPEN)::GetStockObject(DC_PEN));
 
-	inline auto &CreateSolid(COLORREF rgb, int nWidth = 0)       assert_reflect_as_self((this->hobj = CreatePen(PS_SOLID, nWidth, rgb)));
-	inline auto &CreateDash(COLORREF rgb, int nWidth = 0)        assert_reflect_as_self((this->hobj = CreatePen(PS_DASH, nWidth, rgb)));
-	inline auto &CreateDot(COLORREF rgb, int nWidth = 0)         assert_reflect_as_self((this->hobj = CreatePen(PS_DOT, nWidth, rgb)));
-	inline auto &CreateDashDot(COLORREF rgb, int nWidth = 0)     assert_reflect_as_self((this->hobj = CreatePen(PS_DASHDOT, nWidth, rgb)));
-	inline auto &CreateDashDotDot(COLORREF rgb, int nWidth = 0)  assert_reflect_as_self((this->hobj = CreatePen(PS_DASHDOTDOT, nWidth, rgb)));
-	inline auto &Create(COLORREF rgb, int nWidth = 0)            assert_reflect_as_self((this->hobj = CreatePen(PS_NULL, nWidth, rgb)));
-	inline auto &CreateInsideFrame(COLORREF rgb, int nWidth = 0) assert_reflect_as_self((this->hobj = CreatePen(PS_INSIDEFRAME, nWidth, rgb)));
-	inline auto &CreateUserStyle(COLORREF rgb, int nWidth = 0)   assert_reflect_as_self((this->hobj = CreatePen(PS_USERSTYLE, nWidth, rgb)));
-	inline auto &CreateAlternate(COLORREF rgb, int nWidth = 0)   assert_reflect_as_self((this->hobj = CreatePen(PS_ALTERNATE, nWidth, rgb)));
-
-protected:
-	friend union RefAs<Pen>;
-	Pen(HPEN hPen) : super(hPen) {}
+	inline static Pen CreateSolid(COLORREF rgb, int nWidth = 0)       assert_reflect_as(auto h = CreatePen(PS_SOLID, nWidth, rgb), h);
+	inline static Pen CreateDash(COLORREF rgb, int nWidth = 0)        assert_reflect_as(auto h = CreatePen(PS_DASH, nWidth, rgb), h);
+	inline static Pen CreateDot(COLORREF rgb, int nWidth = 0)         assert_reflect_as(auto h = CreatePen(PS_DOT, nWidth, rgb), h);
+	inline static Pen CreateDashDot(COLORREF rgb, int nWidth = 0)     assert_reflect_as(auto h = CreatePen(PS_DASHDOT, nWidth, rgb), h);
+	inline static Pen CreateDashDotDot(COLORREF rgb, int nWidth = 0)  assert_reflect_as(auto h = CreatePen(PS_DASHDOTDOT, nWidth, rgb), h);
+	inline static Pen Create(COLORREF rgb, int nWidth = 0)            assert_reflect_as(auto h = CreatePen(PS_NULL, nWidth, rgb), h);
+	inline static Pen CreateInsideFrame(COLORREF rgb, int nWidth = 0) assert_reflect_as(auto h = CreatePen(PS_INSIDEFRAME, nWidth, rgb), h);
+	inline static Pen CreateUserStyle(COLORREF rgb, int nWidth = 0)   assert_reflect_as(auto h = CreatePen(PS_USERSTYLE, nWidth, rgb), h);
+	inline static Pen CreateAlternate(COLORREF rgb, int nWidth = 0)   assert_reflect_as(auto h = CreatePen(PS_ALTERNATE, nWidth, rgb), h);
 };
 #pragma endregion
 
@@ -209,6 +298,9 @@ enum_class(HatchStyle, int,
 struct Brush;
 using CBrush = RefAs<Brush>;
 struct GDI_Based(Brush, HBRUSH) {
+	friend union RefAs<Brush>;
+	Brush(HBRUSH hBrush) : super(hBrush) {}
+public:
 	using super = GObjectBase<Brush, HBRUSH>;
 
 	Brush() {}
@@ -216,6 +308,8 @@ struct GDI_Based(Brush, HBRUSH) {
 	Brush(Brush &bru) : super(bru) {}
 	Brush(Brush &&bru) : super(bru) {}
 	Brush(const Brush &) = delete;
+	
+	using super::operator=;
 
 	inline static Brush SysColor(WX::SysColor sc) assert_reflect_as(auto hbr = GetSysColorBrush(sc.yield()), hbr);
 
@@ -227,42 +321,97 @@ struct GDI_Based(Brush, HBRUSH) {
 	inline static Brush Null()    reflect_as((HBRUSH)::GetStockObject(NULL_BRUSH));
 	inline static Brush DC()      reflect_as((HBRUSH)::GetStockObject(DC_BRUSH));
 
-	inline auto &CreateSolid(COLORREF rgb)                assert_reflect_as_self((this->hobj = CreateSolidBrush(rgb)));
-	inline auto &CreatePattern(HBITMAP hbm)               assert_reflect_as_self((this->hobj = CreatePatternBrush(hbm)));
-	inline auto &CreateHatch(COLORREF rgb, HatchStyle hs) assert_reflect_as_self((this->hobj = CreateHatchBrush(hs.yield(), rgb)));
-protected:
-	friend union RefAs<Brush>;
-	Brush(HBRUSH hBrush) : super(hBrush) {}
+	inline static Brush CreateSolid(COLORREF rgb)                assert_reflect_as(auto h = CreateSolidBrush(rgb), h);
+	inline static Brush CreatePattern(HBITMAP hbm)               assert_reflect_as(auto h = CreatePatternBrush(hbm), h);
+	inline static Brush CreateHatch(COLORREF rgb, HatchStyle hs) assert_reflect_as(auto h = CreateHatchBrush(hs.yield(), rgb), h);
 };
 #pragma endregion
 
 #pragma region Palette
-struct Palette;
+class Palette;
+class PaletteEntry : protected PALETTEENTRY {
+	friend class Palette;
+public:
+	PaletteEntry() {}
+	PaletteEntry(Null) {}
+	PaletteEntry(const PALETTEENTRY &entry) : PALETTEENTRY(entry) {}
+	PaletteEntry(BYTE r, BYTE g, BYTE b, BYTE f = 0) : PALETTEENTRY{ r, g, b, f } {}
+	PaletteEntry(RGBColor rgb, BYTE f = 0) : PALETTEENTRY{ rgb.Red(), rgb.Green(), rgb.Blue(), f } {}
+	PaletteEntry(COLORREF rgb, BYTE f = 0) : PaletteEntry((RGBColor)rgb, f) {}
+public: // Property - Red
+	/* W */ inline auto &Red(BYTE bRed) reflect_to_self(this->peRed = bRed);
+	/* R */ inline BYTE  Red() const reflect_as(this->peRed);
+public: // Property - Green
+	/* W */ inline auto &Green(BYTE bGreen) reflect_to_self(this->peGreen = bGreen);
+	/* R */ inline BYTE  Green() const reflect_as(this->peGreen);
+public: // Property - Blue
+	/* W */ inline auto &Blue(BYTE bBlue) reflect_to_self(this->peBlue = bBlue);
+	/* R */ inline BYTE  Blue() const reflect_as(this->peBlue);
+public:
+	inline operator RGBColor() const reflect_as({ Red(), Green(), Blue() });
+	inline LPPALETTEENTRY operator&() reflect_as(this);
+	inline const PALETTEENTRY *operator&() const reflect_as(this);
+};
+using PalEntry = PaletteEntry;
 using CPalette = RefAs<Palette>;
-struct GDI_Based(Palette, HPALETTE) {
+class GDI_Based(Palette, HPALETTE) {
+protected:
+	friend union RefAs<Palette>;
+	Palette(HPALETTE hPal) : super(hPal) {}
+public:
+	using Entry = PaletteEntry;
 	using super = GObjectBase<Palette, HPALETTE>;
 
 	Palette() {}
 	Palette(Null) {}
 	Palette(Palette &pal) : super(pal) {}
 	Palette(Palette &&pal) : super(pal) {}
+	Palette(const Entry *lpEntries, UINT nCount) {
+		assert(1 < nCount && nCount <= 256);
+		AutoPointer<Heap, LOGPALETTE> hPal;
+		hPal.Alloc(sizeof(LOGPALETTE) + (nCount - 1) * sizeof(Entry));
+		auto pPal = &hPal;
+		pPal->palVersion = 0x300;
+		pPal->palNumEntries = (WORD)nCount;
+		CopyMemory(&pPal->palPalEntry, lpEntries, sizeof(Entry) * nCount);
+		assert(this->hobj = CreatePalette(pPal));
+	}
+	Palette(std::initializer_list<COLORREF> entries) : Palette((const Entry *)entries.begin(), (UINT)entries.size()) {}
+	Palette(std::initializer_list<Entry> entries) : Palette(entries.begin(), (UINT)entries.size()) {}
+	Palette(const std::vector<Entry> &entries) : Palette(entries.data(), (UINT)entries.size()) {}
 	Palette(const Palette &) = delete;
+	
+	using super::operator=;
 
 	inline static CPalette Default() reflect_as((HPALETTE)::GetStockObject(DEFAULT_PALETTE));
 
-	inline auto &SetEntries(UINT iStart, UINT cEntries, const PALETTEENTRY *pPalEntries) assert_reflect_as_self(SetPaletteEntries(self, iStart, cEntries, pPalEntries));
-	inline auto &GetEntries(UINT iStart, UINT cEntries, PALETTEENTRY *pPalEntries) const assert_reflect_as_self(GetPaletteEntries(self, iStart, cEntries, pPalEntries));
-
-	inline auto&Resize(UINT nNumEntries) assert_reflect_as_self(ResizePalette(self, nNumEntries));
+	inline auto &SetEntries(UINT iStart, const Entry *pPalEntries, UINT cEntries = 1) assert_reflect_as_self(SetPaletteEntries(self, iStart, cEntries, pPalEntries));
+	inline auto &GetEntries(UINT iStart, Entry *pPalEntries, UINT cEntries = 1) const assert_reflect_as_self(GetPaletteEntries(self, iStart, cEntries, pPalEntries));
 
 	inline UINT NearestIndex(COLORREF cr) const reflect_as(GetNearestPaletteIndex(self, cr));
 
-	//inline auto Count() const {
-	//	return GetPaletteEntries()
-	//}
-protected:
-	friend union RefAs<Palette>;
-	Palette(HPALETTE hPal) : super(hPal) {}
+public: // Property - Entries
+	/* W */ inline auto &Entries(std::vector<Entry> entries) {
+		auto count = std::min((size_t)Count(), entries.size());
+		assert(count <= 256);
+		if (count > 0)
+			SetEntries(0, entries.data(), (WORD)(count - 1));
+		retself;
+	}
+	/* R */ inline std::vector<Entry> Entries() const {
+		size_t count = Count();
+		std::vector<Entry> entries(count);
+		if (count > 0)
+			GetEntries(0, entries.data(), (WORD)count);
+		return entries;
+	}
+public: // Property - NumEntries
+	/* W */ inline auto &Count(WORD nNumEntries) assert_reflect_as_self(ResizePalette(self, nNumEntries));
+	/* R */ inline WORD  Count() const assert_reflect_to(WORD w = 0, GetObject(self, sizeof(WORD), &w), w);
+public: // Property - Size
+	/* R */ inline size_t Size() const reflect_as(Count() * sizeof(Entry));
+public:
+	inline Entry operator[](size_t ind) const reflect_to(Entry entry; GetEntries((UINT)ind, (Entry *)&entry), entry);
 };
 using CPalette = RefAs<Palette>;
 #pragma endregion
@@ -277,6 +426,29 @@ enum_class(MapModes, int,
 	Twips            = MM_TWIPS,
 	Isotropic        = MM_ISOTROPIC,
 	Anisotropic      = MM_ANISOTROPIC);
+enum_flags(Rop, DWORD,
+	SrcCopy              = SRCCOPY,     /* dest = source                   */
+	SrcPaint             = SRCPAINT,    /* dest = source OR dest           */
+	SrcAnd               = SRCAND,      /* dest = source AND dest          */
+	SrcInvert            = SRCINVERT,   /* dest = source XOR dest          */
+	SrcErase             = SRCERASE,    /* dest = source AND (NOT dest )   */
+	SrcCopyNot           = NOTSRCCOPY,  /* dest = (NOT source)             */
+	SrcEraseNot          = NOTSRCERASE, /* dest = (NOT src) AND (NOT dest) */
+	MergeCopy            = MERGECOPY,   /* dest = (source AND pattern)     */
+	MergePaint           = MERGEPAINT,  /* dest = (NOT source) OR dest     */
+	PatCopy              = PATCOPY,     /* dest = pattern                  */
+	PatPaint             = PATPAINT,    /* dest = DPSnoo                   */
+	PatInvert            = PATINVERT,   /* dest = pattern XOR dest         */
+	DstInvert            = DSTINVERT,   /* dest = (NOT dest)               */
+	Blackness            = BLACKNESS,   /* dest = BLACK                    */
+	Whiteness            = WHITENESS,   /* dest = WHITE                    */
+	NoMirrorBitmap                = NOMIRRORBITMAP, /* Do not Mirror the bitmap in this call */
+	CaptureBlt                    = CAPTUREBLT/* Include layered windows */);
+enum_class(Stretches, int,
+	And  = BLACKONWHITE,
+	Or   = WHITEONBLACK,
+	Del  = COLORONCOLOR,
+	Half = HALFTONE);
 class DeviceCap;
 using CDC = RefAs<DeviceCap>;
 class GDI_Based(DeviceCap, HDC) {
@@ -292,8 +464,11 @@ public:
 	DeviceCap(DeviceCap &&dc) : super(dc) {}
 	DeviceCap(const DeviceCap &) = delete;
 
+	using super::operator=;
+
 #pragma region Methods
-	inline auto&CreateCompatible(HDC hdc = O) assert_reflect_as_self((this->hobj = CreateCompatibleDC(hdc)));
+	inline static DeviceCap CreateCompatible(HDC hdc = O) assert_reflect_as(auto hobj = CreateCompatibleDC(hdc), hobj);
+
 	inline bool Delete() {
 		if (this->hobj)
 			if (!DeleteDC(self))
@@ -303,43 +478,29 @@ public:
 	}
 	inline auto Release(HWND hWnd) reflect_as(ReleaseDC(hWnd, self));
 
-//#define SRCCOPY             (DWORD)0x00CC0020 /* dest = source                   */
-//#define SRCPAINT            (DWORD)0x00EE0086 /* dest = source OR dest           */
-//#define SRCAND              (DWORD)0x008800C6 /* dest = source AND dest          */
-//#define SRCINVERT           (DWORD)0x00660046 /* dest = source XOR dest          */
-//#define SRCERASE            (DWORD)0x00440328 /* dest = source AND (NOT dest )   */
-//#define NOTSRCCOPY          (DWORD)0x00330008 /* dest = (NOT source)             */
-//#define NOTSRCERASE         (DWORD)0x001100A6 /* dest = (NOT src) AND (NOT dest) */
-//#define MERGECOPY           (DWORD)0x00C000CA /* dest = (source AND pattern)     */
-//#define MERGEPAINT          (DWORD)0x00BB0226 /* dest = (NOT source) OR dest     */
-//#define PATCOPY             (DWORD)0x00F00021 /* dest = pattern                  */
-//#define PATPAINT            (DWORD)0x00FB0A09 /* dest = DPSnoo                   */
-//#define PATINVERT           (DWORD)0x005A0049 /* dest = pattern XOR dest         */
-//#define DSTINVERT           (DWORD)0x00550009 /* dest = (NOT dest)               */
-//#define BLACKNESS           (DWORD)0x00000042 /* dest = BLACK                    */
-//#define WHITENESS           (DWORD)0x00FF0062 /* dest = WHITE                    */
-//#define NOMIRRORBITMAP               (DWORD)0x80000000 /* Do not Mirror the bitmap in this call */
-//#define CAPTUREBLT                   (DWORD)0x40000000 /* Include layered windows */
+//	inline auto &BltStretch(LPoint dstStart, LSize dstSize, Rop rop = Rop::SrcCopy)
+	inline auto &BltStretch(LPoint dstStart, LSize dstSize, HDC hdcSrc, LPoint srcStart, LSize srcSize, Rop rop = Rop::SrcCopy) assert_reflect_as_self(::StretchBlt(self, dstStart.x, dstStart.y, dstSize.cx, dstSize.cy, hdcSrc, srcStart.x, srcStart.y, srcSize.cx, srcSize.cy, rop.yield()));
+	inline auto &BltStretch(LRect dst, HDC hdcSrc, LRect src, Rop rop = Rop::SrcCopy) reflect_to_self(BltStretch(dst.top_left(), dst.size(), hdcSrc, src.top_left(), src.size(), rop));
+	inline auto &BltBit(LPoint dstStart, LSize dstSize, HDC hdcSrc, LPoint srcStart = 0, Rop rop = Rop::SrcCopy) assert_reflect_as_self(::BitBlt(self, dstStart.x, dstStart.y, dstSize.cx, dstSize.cy, hdcSrc, srcStart.x, srcStart.y, rop.yield()));
+	inline auto &BltBit(LRect rc, HDC hdcSrc, LPoint srcStart = 0, Rop rop = Rop::SrcCopy) reflect_to_self(BltBit(rc.top_left(), rc.size(), hdcSrc, srcStart, rop));
 
-	inline auto&Copy(LPoint dstStart, LSize dstSize, HDC hdcSrc, LPoint srcStart = 0) assert_reflect_as_self(BitBlt(self, dstStart.x, dstStart.y, dstSize.cx, dstSize.cy, hdcSrc, srcStart.x, srcStart.y, SRCCOPY));
-	inline auto&Copy(LRect rc, HDC hdcSrc, LPoint srcStart = 0) reflect_to_self(Copy(rc.top_left(), rc.size(), hdcSrc, srcStart));
 	inline CGObject Select(HGDIOBJ ho) assert_reflect_as((ho = SelectObject(self, ho)) != HGDI_ERROR, ho);
-	inline auto     Select(HPALETTE hPal, bool bForceBkgd = false) reflect_as(SelectPalette(self, hPal, bForceBkgd));
+	inline CPalette Palette(HPALETTE hPal, bool bForceBkgd = false) check_reflect_to(hPal = SelectPalette(self, hPal, bForceBkgd), hPal);
 
 	inline auto&operator()(HGDIOBJ ho) reflect_to_self(Select(ho));
 	inline auto&operator()(Bitmap &ho) reflect_to_self(Select(ho));
 	inline auto&operator()(const Pen &ho) reflect_to_self(Select(ho));
 	inline auto&operator()(const Brush &ho) reflect_to_self(Select(ho));
-	inline auto&operator()(const Palette hPal, bool bForceBkgd = false) reflect_to_self(Select(hPal, bForceBkgd));
+	inline auto&operator()(const WX::Palette hPal, bool bForceBkgd = false) reflect_to_self(Palette(hPal, bForceBkgd));
 #pragma endregion
 
 #pragma region Properties
 public: // Property - PenColor
 	/* W */ inline auto    &PenColor(COLORREF rgb) assert_reflect_as_self(SetDCPenColor(self, rgb));
-	/* R */ inline ColorRGB PenColor() const reflect_as(GetDCPenColor(self));
+	/* R */ inline RGBColor PenColor() const reflect_as(GetDCPenColor(self));
 public: // Property - BkColor
 	/* W */ inline auto    &BkColor(COLORREF rgb) assert_reflect_as_self(SetBkColor(self, rgb));
-	/* R */ inline ColorRGB BkColor() const reflect_as(GetBkColor(self));
+	/* R */ inline RGBColor BkColor() const reflect_as(GetBkColor(self));
 public: // Property - ViewOrg
 	/* W */ inline auto  &ViewOrg(LPoint pt) assert_reflect_as_self(SetViewportOrgEx(self, pt.x, pt.y, O));
 	/* R */ inline LPoint ViewOrg() const assert_reflect_to(LPoint pt, GetViewportOrgEx(self, &pt), pt);
@@ -359,6 +520,9 @@ public: // Property - Size
 	/* R */ inline LSize Size() const reflect_as({ GetDeviceCaps(self, HORZRES), GetDeviceCaps(self, VERTRES) });
 public: // Property - PaletteRealize
 	/* R */ inline UINT PaletteRealize() const reflect_as(RealizePalette(self));
+public: // Property - StretchMode
+	/* W */ inline auto &StretchMode(Stretches mode) assert_reflect_as_self(SetStretchBltMode(self, mode.yield()));
+	/* R */ inline Stretches StretchMode() const assert_reflect_as(auto mode = GetStretchBltMode(self), force_cast<Stretches>(mode));
 #pragma endregion
 
 #pragma region Draw
@@ -386,7 +550,7 @@ using DC = DeviceCap;
 class Icon {
 protected:
 	friend union RefAs<Icon>;
-	HICON hIcon;
+	HICON hIcon = O;
 	Icon(HICON hIcon) : hIcon(hIcon) {}
 public:
 	class Logic {
@@ -423,7 +587,6 @@ public:
 	public:
 		inline Icon Create() const assert_reflect_as(auto h = CreateIcon(hInstance, nWidth, nHeight, nPlanes, nBitsPerPixel, lpANDbits, lpXORbits), h);
 	};
-
 	struct CreateStruct : protected ICONINFO {
 	public:
 		CreateStruct(bool fIcon = true) : ICONINFO{ 0 } reflect_to(this->fIcon = fIcon);
@@ -699,17 +862,20 @@ public: // Property - String
 		mii.cbSize = sizeof(mii);
 		mii.fMask = MIIM_STRING;
 		mii.cch = MaxLenNotice;
-		mii.dwTypeData = String::Alloc(mii.cch);
+		WX::String data((size_t)mii.cch);
+		mii.dwTypeData = data;
 		assert(GetMenuItemInfo(hMenu, uID, flags, &mii));
-		return { (size_t)mii.cch, mii.dwTypeData };
+		return data;
 	}
 #pragma endregion
 };
 class Menu {
+protected:
 	HMENU hMenu = O;
+	friend union RefAs<Menu>;
+	Menu(HMENU hMenu) : hMenu(hMenu) {}
 public:
-
-	Menu() assert(hMenu = CreateMenu());
+	Menu() {}
 	Menu(Null) {}
 	Menu(Menu &m) : hMenu(m) reflect_to(m.hMenu = O);
 	Menu(Menu &&m) : hMenu(m) reflect_to(m.hMenu = O);
@@ -720,8 +886,9 @@ public:
 	using Style = MenuStyle;
 
 #pragma region Methods
-	inline auto&Create()      assert_reflect_as_self((hMenu = CreateMenu()));
-	inline auto&CreatePopup() assert_reflect_as_self((hMenu = CreatePopupMenu()));
+	inline static Menu Create()      assert_reflect_as(auto h = CreateMenu(), h);
+	inline static Menu CreatePopup() assert_reflect_as(auto h = CreatePopupMenu(), h);
+
 	inline bool Destroy() {
 		if (hMenu)
 			if (!DestroyMenu(hMenu))
@@ -800,20 +967,18 @@ public:
 
 	inline static Menu &Attach(HMENU &hMenu) reflect_as(reuse_as<Menu>(hMenu));
 	inline static const Menu &Attach(const HMENU &hMenu) reflect_as(reuse_as<const Menu>(hMenu));
-protected:
-	friend Menu MenuPopup();
-	friend union RefAs<Menu>;
-	Menu(HMENU hMenu) : hMenu(hMenu) {}
 };
 MENUITEM_PROPERTY(MenuItem::SubMenu, MIIM_SUBMENU, hSubMenu, CMenu, hSubMenu, _M_);
 inline CMenu MenuItem::Sub(int nPos) reflect_as({ GetSubMenu(hMenu, nPos) });
-inline Menu MenuPopup() reflect_as(CreatePopupMenu());
 #undef MENUITEM_PROPERTY
 #pragma endregion
 
 #pragma region Module
 class Module {
-	HINSTANCE hInst;
+protected:
+	HINSTANCE hInst = O;
+	friend union RefAs<Module>;
+	Module(HINSTANCE hModule) : hInst(hModule) {}
 public:
 	Module(LPCTSTR lpModuleName = O) : hInst(GetModuleHandle(lpModuleName)) {}
 	Module(Null) {}
@@ -863,9 +1028,6 @@ public:
 
 	inline static Module &Attach(HINSTANCE &hInst) reflect_as(reuse_as<Module>(hInst));
 	inline static const Module &Attach(const HINSTANCE &hInst) reflect_as(reuse_as<const Module>(hInst));
-protected:
-	friend union RefAs<Module>;
-	Module(HINSTANCE hModule) : hInst(hModule) {}
 };
 using CModule = RefAs<Module>;
 #pragma endregion

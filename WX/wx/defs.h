@@ -9,6 +9,7 @@
 #include <utility>
 
 #pragma comment(lib,"gdi32.lib")
+#pragma comment(lib,"OneCore.lib")
 #pragma comment(linker, "\"" \
 	"/manifestdependency:" \
 	"type='win32' " \
@@ -18,6 +19,13 @@
 	"publicKeyToken='6595b64144ccf1df' " \
 	"language='*'" \
 "\"")
+
+#ifdef min
+#	undef min
+#endif
+#ifdef max
+#	undef max
+#endif
 
 #define _M_(...) __VA_ARGS__
 #define __braceO (
@@ -64,13 +72,19 @@
 
 namespace WX {
 
+template<class CharType>
+class StringBase;
+using String = StringBase<TCHAR>;
+using StringA = StringBase<CHAR>;
+using StringW = StringBase<WCHAR>;
+
 #ifdef UNICODE
 constexpr bool IsUnicode = true;
 #else
 constexpr bool IsUnicode = false;
 #endif
 
-#define T(str) TEXT(str)
+#define _T(str) TEXT(str)
 
 template<class OutType, class InType>
 inline static OutType force_cast(InType in) reflect_as(*(OutType *)&in);
@@ -95,6 +109,13 @@ static constexpr size_t lengthof<const arrayof<AnyType, Len> &> = Len;
 template<class AnyType, size_t Len>
 constexpr auto &_CountOf(const arrayof<AnyType, Len> &a) reflect_as(a);
 #define CountOf(...) lengthof<decltype(_CountOf(__VA_ARGS__))>
+
+template<class AnyType>
+struct SizeOf_t { static constexpr size_t val = sizeof(AnyType); };
+template<>
+struct SizeOf_t<void> { static constexpr size_t val = 0; };
+template<class AnyType>
+constexpr size_t SizeOf = SizeOf_t<AnyType>::val;
 
 template<class AnyClass>
 union RefAs {
@@ -122,19 +143,37 @@ public:
 	inline operator AnyType() const reflect_as(t);
 };
 
-struct Exception {
-	LPCTSTR lpszLine;
+class Exception;
+class Exception {
+	LPCTSTR lpszFile, lpszFunc, lpszSent;
+	size_t szFile, szFunc, szSent;
 	DWORD dwErrCode;
 public:
-	Exception(LPCTSTR lpszLine, DWORD dwErrCode) :
-		lpszLine(lpszLine), dwErrCode(dwErrCode) {}
-	Exception(LPCTSTR lpszLine) :
-		lpszLine(lpszLine), dwErrCode(GetLastError()) {}
+	template<size_t szFile, size_t szFunc, size_t szSent>
+	Exception(const TCHAR(&strFile)[szFile],
+			  const TCHAR(&strFunc)[szFunc],
+			  const TCHAR(&strSent)[szSent],
+			  DWORD dwErrCode = GetLastError()) :
+		lpszFile(strFile), lpszFunc(strFunc), lpszSent(strSent),
+		szFile(szFile), szFunc(szFunc), szSent(szSent),
+		dwErrCode(dwErrCode) {}
+public:
+	const String File() const;
+	const String Function() const;
+	const String Sentence() const;
+	operator String() const;
+	inline DWORD LastError() const reflect_as(dwErrCode);
 };
 
-#define assert(line) \
-{ if (!(line)) throw Exception(TEXT(#line)); }
+#if UNICODE
+#	define assert(line) \
+{ if (!(line)) throw Exception(__FILEW__, __FUNCTIONW__, TEXT(#line)); }
+#else
+#	define assert(line) \
+{ if (!(line)) throw Exception(__FILE__, __FUNCTION__, TEXT(#line)); }
+#endif
 
+#if 0
 #pragma region Z-Token
 template<class AnyChar = TCHAR>
 struct ZRegexX {
@@ -143,10 +182,23 @@ struct ZRegexX {
 	using HP_CSTR = const LP_CSTR;
 
 #pragma region Offsets
-	template<AnyChar st, AnyChar ed = st>
-	static constexpr bool is(AnyChar ch) reflect_as(st <= ed ? (st <= ch && ch <= ed) : (st < ch || ch < ed));
-	template<AnyChar...chs>
-	static constexpr bool in(AnyChar ch) reflect_as(((ch == chs) || ...));
+	static constexpr bool is(AnyChar ch, AnyChar st, AnyChar ed) reflect_as(st <= ed ? (st <= ch && ch <= ed) : (st < ch || ch < ed));
+	static constexpr bool is(AnyChar ch, LP_CSTR lpcDct, size_t len, size_t ind = 0) reflect_as(
+		_if (ind >= len)
+			_return false
+		_elif (is(ch, lpcDct[0], lpcDct[len]))
+			_return true
+		_else
+			_return is(ch, lpcDct + 1, len, ind + 1)
+	);
+	static constexpr bool in(AnyChar ch, LP_CSTR lpcDct, size_t len) reflect_as(
+		_if (len <= 1)
+			_return false
+		_elif (ch == lpcDct[0])
+			_return true
+		_else
+			_return in(ch, lpcDct + 1, len - 1)
+	);
 
 	static constexpr bool is_09(AnyChar ch) reflect_as(is<'0', '9'>(ch));
 	static constexpr bool is_AZ(AnyChar ch) reflect_as(is<'A', 'Z'>(ch));
@@ -156,59 +208,59 @@ struct ZRegexX {
 	static constexpr bool is_Space(AnyChar ch) reflect_as(in<' ', '\t'>(ch));
 	static constexpr bool is_Blank(AnyChar ch) reflect_as(is_Space(ch) || in<'\n', '\r'>(ch));
 
-	static constexpr HP_CSTR OffsetProtoWord(LP_CSTR lpcl, HP_CSTR lpch) reflect_as(
-		_if (is_Word(lpcl[0]))
-			_return OffsetProtoWord(lpcl + 1, lpch)
+	static constexpr HP_CSTR OffsetProtoWord(LP_CSTR lpc, HP_CSTR hpc) reflect_as(
+		_if (is_Word(lpc[0]))
+			_return OffsetProtoWord(lpc + 1, hpc)
 		_else
-			_return lpcl
+			_return lpc
 	);
-	static constexpr HP_CSTR OffsetWord(LP_CSTR lpcl, HP_CSTR lpch) reflect_as(
-		_if (is_Word(lpcl[0]) && !is_09(lpcl[0]))
-			_return OffsetProtoWord(lpcl + 1, lpch)
+	static constexpr HP_CSTR OffsetWord(LP_CSTR lpc, HP_CSTR hpc) reflect_as(
+		_if (is_Word(lpc[0]) && !is_09(lpc[0]))
+			_return OffsetProtoWord(lpc + 1, hpc)
 		_else
-			_return lpcl
+			_return lpc
 	);
-	static constexpr HP_CSTR OffsetNumber(LP_CSTR lpcl, HP_CSTR lpch) reflect_as(
-		_if (is_09(lpcl[0]))
-			_return OffsetNumber(lpcl + 1, lpch)
+	static constexpr HP_CSTR OffsetNumber(LP_CSTR lpc, HP_CSTR hpc) reflect_as(
+		_if (is_09(lpc[0]))
+			_return OffsetNumber(lpc + 1, hpc)
 		_else
-			_return lpcl
+			_return lpc
 	);
-	static constexpr HP_CSTR OffsetBlank(LP_CSTR lpcl, HP_CSTR lpch) reflect_as(
-		_if (is_Blank(lpcl[0]))
-			_return OffsetBlank(lpcl + 1, lpch)
+	static constexpr HP_CSTR OffsetBlank(LP_CSTR lpc, HP_CSTR hpc) reflect_as(
+		_if (is_Blank(lpc[0]))
+			_return OffsetBlank(lpc + 1, hpc)
 		_else
-			_return lpcl
+			_return lpc
 	);
-	static constexpr HP_CSTR OffsetSpace(LP_CSTR lpcl, HP_CSTR lpch) reflect_as(
-		_if (is_Space(lpcl[0]))
-			_return OffsetSpace(lpcl + 1, lpch)
+	static constexpr HP_CSTR OffsetSpace(LP_CSTR lpc, HP_CSTR hpc) reflect_as(
+		_if (is_Space(lpc[0]))
+			_return OffsetSpace(lpc + 1, hpc)
 		_else 
-			_return lpcl
+			_return lpc
 	);
-	static constexpr HP_CSTR OffsetToken(LP_CSTR lpcl, HP_CSTR lpch, LP_CSTR lpclDst, HP_CSTR lpchDst) reflect_as(
-		_if (lpcl[0] == lpclDst[0])
-			_return OffsetToken(lpcl + 1, lpch, lpclDst + 1, lpchDst)
+	static constexpr HP_CSTR OffsetToken(LP_CSTR lpc, HP_CSTR hpc, LP_CSTR lpclDst, HP_CSTR lpchDst) reflect_as(
+		_if (lpc[0] == lpclDst[0])
+			_return OffsetToken(lpc + 1, hpc, lpclDst + 1, lpchDst)
 		_else
-			_return lpcl
+			_return lpc
 	);
-	//static constexpr HP_CSTR OffsetValue(LP_CSTR lpcl, HP_CSTR lpch, size_t Level = 0) reflect_as(
-	//	_if (lpcl[0] == '\0')
-	//		_return lpcl
-	//	_elif (lpcl[0] == '(')
-	//		_return OffsetValue(lpcl + 1, lpch, Level + 1)
-	//	_elif (lpcl[0] == ',')
+	//static constexpr HP_CSTR OffsetValue(LP_CSTR lpc, HP_CSTR hpc, size_t Level = 0) reflect_as(
+	//	_if (lpc[0] == '\0')
+	//		_return lpc
+	//	_elif (lpc[0] == '(')
+	//		_return OffsetValue(lpc + 1, hpc, Level + 1)
+	//	_elif (lpc[0] == ',')
 	//		_if (Level == 0)
-	//			_return lpcl + 1
+	//			_return lpc + 1
 	//		_else
-	//			_return OffsetValue(lpcl + 1, lpch, Level)
-	//	_elif (lpcl[0] == ')')
+	//			_return OffsetValue(lpc + 1, hpc, Level)
+	//	_elif (lpc[0] == ')')
 	//		_if (Level == 0)
-	//			_return lpcl
+	//			_return lpc
 	//		_else
-	//			_return OffsetValue(lpcl + 1, lpch, Level - 1)
+	//			_return OffsetValue(lpc + 1, hpc, Level - 1)
 	//	_else
-	//		_return OffsetValue(lpcl + 1, lpch, Level)
+	//		_return OffsetValue(lpc + 1, hpc, Level)
 	//);
 #pragma endregion
 
@@ -227,52 +279,37 @@ struct ZRegexX {
 			bool Catched, bool Matched) :
 			Low(Low), High(High),
 			Matched(Matched), Catched(Catched) {}
-		constexpr auto Length() const reflect_as(HighOff - LowOff);
+		constexpr auto Length() const reflect_as(High - Low);
 		constexpr operator bool() const reflect_as(Matched);
 	};
 
-	struct Blank { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, is_Blank(Low[0]) ? Low + 1 : Low)); };
-	struct Blanks { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, OffsetBlank(Low, High))); };
-	struct Space { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, is_Space(Low[0]) ? Low + 1 : Low)); };
-	struct Spaces { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, OffsetSpace(Low, High))); };
-	struct Word { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, is_Word(Low[0]) ? Low + 1 : Low)); };
-	struct Words { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, OffsetWord(Low, High))); };
-	struct Number { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, is_09(Low[0]) ? Low + 1 : Low)); };
-	struct Numbers { constexpr auto Parse(LP_CSTR Low, HP_CSTR High) reflect_as(Token(Low, OffsetNumber(Low, High)));) };
+	struct blank   : Token { constexpr blank  (LP_CSTR Low, HP_CSTR High) : Token(Low, is_Blank(Low[0]) ? Low + 1 : Low) {} };
+	struct blanks  : Token { constexpr blanks (LP_CSTR Low, HP_CSTR High) : Token(Low, OffsetBlank(Low, High)) {} };
+	struct space   : Token { constexpr space  (LP_CSTR Low, HP_CSTR High) : Token(Low, is_Space(Low[0]) ? Low + 1 : Low) {} };
+	struct spaces  : Token { constexpr spaces (LP_CSTR Low, HP_CSTR High) : Token(Low, OffsetSpace(Low, High)) {} };
+	struct word    : Token { constexpr word   (LP_CSTR Low, HP_CSTR High) : Token(Low, is_Word(Low[0]) ? Low + 1 : Low) {} };
+	struct words   : Token { constexpr words  (LP_CSTR Low, HP_CSTR High) : Token(Low, OffsetWord(Low, High)) {} };
+	struct number  : Token { constexpr number (LP_CSTR Low, HP_CSTR High) : Token(Low, is_09(Low[0]) ? Low + 1 : Low) {} };
+	struct numbers : Token { constexpr numbers(LP_CSTR Low, HP_CSTR High) : Token(Low, OffsetNumber(Low, High)) {} };
 
-	struct Is {
-		LP_CSTR st, ed;
-		size_t Len = 1;
-		constexpr auto Parse(LP_CSTR Low, HP_CSTR High) {}
+	template<class AnyToken, size_t Times>
+	struct Rept;
+	template<class AnyToken>
+	struct Rept<AnyToken, 1> {
+		AnyToken tok;
+		constexpr Rept(LP_CSTR Low, HP_CSTR High) : tok(Low, High) {}
+		constexpr auto Catch() const reflect_as();
+		constexpr auto Length() const reflect_as(tok.Length());
 	};
-	//template<AnyChar...chs>
-	//struct In : Token {
-	//	constexpr In(LP_CSTR lpcStr, size_t LowOff = 0) :
-	//		Token(LowOff, in<chs...>(str[LowOff]) ? LowOff + 1 : LowOff) {}
-	//};
-
-	//template<class AnyToken, size_t Time>
-	//struct Rept;
-	//template<class AnyToken>
-	//struct Rept<AnyToken, 1> {
-	//	AnyToken tok;
-	//	size_t LowOff = tok.LowOff, HighOff = tok.HighOff;
-	//	bool Matched = tok.Matched, Catched = tok.Catched;
-	//	constexpr Rept(LP_CSTR lpcStr, size_t LowOff = 0) :
-	//		tok(str, LowOff) {}
-	//	constexpr auto Length() const reflect_as(tok.Length());
-	//};
-	//template<class AnyToken, size_t Times>
-	//struct Rept {
-	//	static_assert(Times);
-	//	AnyToken tok;
-	//	Rept<AnyToken, Times - 1> last;
-	//	size_t LowOff = last.LowOff, HighOff = last.HighOff;
-	//	bool Matched = tok.Matched && last.Matched, Catched = tok.Catched || last.Catched;
-	//	constexpr Rept(LP_CSTR lpcStr, size_t LowOff = 0) : 
-	//		tok(str, LowOff), last(str, tok.HighOff) {}
-	//	constexpr auto Length() const reflect_as(tok.Length() + last.Length());
-	//};
+	template<class AnyToken, size_t Times>
+	struct Rept {
+		static_assert(Times);
+		AnyToken tok;
+		Rept<AnyToken, Times - 1> last;
+		constexpr Rept(LP_CSTR Low, HP_CSTR High) : tok(Low, High) {}
+		// constexpr auto Catch() const reflect_as({});
+		constexpr auto Length() const reflect_as(tok.Length() + last.Length());
+	};
 
 	//template<class AnyToken>
 	//struct ReptMax {
@@ -380,10 +417,10 @@ struct ZRegexX {
 	//			return last.template catchOf<ind>();
 	//	}
 	//};
-
 };
 using ZRegex = ZRegexX<>;
 #pragma endregion
+#endif
 
 #pragma region Type Traits
 
@@ -406,23 +443,38 @@ struct ChainExtend {
 	const Self &self() const reflect_as(*static_cast<const Self *>(this));
 };
 
-#define child  (this->child())
-#define self   (*this)
-#define retself return self
+#define child    (this->child())
+#define self     (*this)
+#define retself  return self
 #define retchild return child
 
-#define assert_reflect_as(line, ...) \
-{ if (line) return __VA_ARGS__; throw Exception(TEXT(#line)); }
+#if UNICODE
+#	define assert_reflect_as(line, ...) \
+{ if (line) return __VA_ARGS__; throw Exception(__FILEW__, __FUNCTIONW__, TEXT(#line)); }
+#else
+#	define assert_reflect_as(line, ...) \
+{ if (line) return __VA_ARGS__; throw Exception(__FILE__, __FUNCTION__, TEXT(#line)); }
+#endif
 #define assert_reflect_as_self(line)  assert_reflect_as(line, self)
 #define assert_reflect_as_child(line) assert_reflect_as(line, child)
 
-#define assert_reflect_to(defs, line, ...) \
-{ defs; if (line) return __VA_ARGS__; throw Exception(TEXT(#line)); }
+#if UNICODE
+#	define assert_reflect_to(defs, line, ...) \
+{ defs; if (line) return __VA_ARGS__; throw Exception(__FILEW__, __FUNCTIONW__, TEXT(#line)); }
+#else
+#	define assert_reflect_to(defs, line, ...) \
+{ defs; if (line) return __VA_ARGS__; throw Exception(__FILE__, __FUNCTION__, TEXT(#line)); }
+#endif
 #define assert_reflect_to_self(defs, line)  assert_reflect_to(defs, line, self)
 #define assert_reflect_to_child(defs, line) assert_reflect_to(defs, line, child)
 
-#define check_reflect_to(line, ...) \
-{ line; if (auto _err = GetLastError()) throw Exception(TEXT(#line), _err); return __VA_ARGS__; }
+#if UNICODE
+#	define check_reflect_to(line, ...) \
+{ line; if (auto _err = GetLastError()) throw Exception(__FILEW__, __FUNCTIONW__, TEXT(#line), _err); return __VA_ARGS__; }
+#else
+#	define check_reflect_to(line, ...) \
+{ line; if (auto _err = GetLastError()) throw Exception(__FILE__, __FUNCTION__, TEXT(#line), _err); return __VA_ARGS__; }
+#endif
 #define check_reflect_to_self(line)  check_reflect_to(line, self)
 #define check_reflect_to_child(line) check_reflect_to(line, child)
 
@@ -471,7 +523,32 @@ using subtype_branchof_##name = \
 	decltype(__subtype_branchof_##name<AnyType, OtherType>(0))
 #pragma endregion
 
+template<class Class1, class Class2>
+struct chain_is_ext_of_t {
+	subtype_branch(super);
+	static constexpr bool value() {
+		if constexpr (std::is_same_v<Class1, Class2>)
+			return true;
+		else if constexpr (std::is_void_v<subtype_branchof_super<Class1, void>>)
+			return false;
+		else if constexpr (std::is_same_v<typename Class1::super, Class2>)
+			return true;
+		else
+			return chain_is_ext_of_t<typename Class1::super, Class2>::value();
+	}
+};
+
 #pragma region Enumerate
+template<class Enum1, class Enum2, class EnumType>
+inline auto __makeResult(EnumType val) {
+	constexpr auto left = chain_is_ext_of_t<Enum1, Enum2>::value();
+	constexpr auto right = chain_is_ext_of_t<Enum2, Enum1>::value();
+	static_assert(left || right, "Convertless");
+	if constexpr (left)
+		return force_cast<Enum1>(val);
+	else if constexpr (right)
+		return force_cast<Enum2>(val);
+}
 #define enum_default
 #define enum_alias
 #define enum_complex
@@ -481,15 +558,14 @@ enum class EnumModifies : CHAR {
 	alias = 'a',
 	complex = 'c'
 };
-class String;
 /*
 struct SkipBlanks : ZToken {
 	constexpr SkipBlanks(const TCHAR *str, size_t Off) : ZToken(Off, OffsetSpace(str, Off)) {}
 };
 struct en_modify : ZToken {
-	static constexpr TCHAR TOK_enum_default[] = T("enum_default");
-	static constexpr TCHAR TOK_enum_complex[] = T("enum_complex");
-	static constexpr TCHAR TOK_enum_alias[] = T("enum_alias");
+	static constexpr TCHAR TOK_enum_default[] = _T("enum_default");
+	static constexpr TCHAR TOK_enum_complex[] = _T("enum_complex");
+	static constexpr TCHAR TOK_enum_alias[] = _T("enum_alias");
 	constexpr en_modify(const TCHAR *str, size_t Off) : Token(
 		_return ztoken<EnumModifies>(EnumModifies::defualt, Off, OffsetToken(str, TOK_enum_default, Off),
 				ztoken<EnumModifies>(EnumModifies::complex, Off, OffsetToken(str, TOK_enum_complex, Off),
@@ -508,7 +584,6 @@ struct en_val : Tokenizer<TCHAR> {
 	static constexpr Token Parse(const TCHAR *str, size_t Off) reflect_as(Token(true, Off, OffsetValue(str, Off)));
 };*/
 // using EnumTokenizer = Tokenizer<TCHAR>::Tokens<en_modify, skip_blanks, en_name, skip_blanks, en_eq, skip_blanks, en_val>;
-
 template<class ProtoType>
 struct EnumToken {
 	const String *pszEnumName;
@@ -547,14 +622,14 @@ struct EnumBase {
 	using ProtoType = typename ProtoUnit::ProtoType;
 	using Token = EnumToken<ProtoType>;
 	static constexpr size_t CountAll() reflect_as(IsProtoEnum ? SubClass::Count : SubClass::Count + ProtoEnum::CountAll());
-private:
 };
 #define __enum_ex(name, base, oprt, estr, ...) \
 class name : public EnumBase<name, base> { \
 public: \
-	using super = EnumBase<name, base>; \
-	using ProtoType = typename super::ProtoType; \
-	using ProtoUnit = typename super::ProtoUnit; \
+	using EnumType = name; \
+	using super = base; \
+	using ProtoType = typename EnumBase<name, base>::ProtoType; \
+	using ProtoUnit = typename EnumBase<name, base>::ProtoUnit; \
 public: \
 	friend struct EnumBase<name, base>; \
 	static constexpr TCHAR __Name[] = TEXT(#name); \
@@ -565,39 +640,37 @@ public: \
 	} \
 	class Unit : protected ProtoUnit { \
 	protected: friend class name; \
+		Unit(const ProtoUnit &val) : ProtoUnit(val.val) {} \
 		constexpr Unit(const ProtoType &val) : ProtoUnit(val) { static_assert(sizeof(val) == sizeof(self), "alignment error"); } \
 		const ProtoType *operator=(const ProtoType &) const reflect_as(std::addressof(val)); \
-	public: constexpr Unit(const ProtoUnit &val) : ProtoUnit(val.val) {} \
+	public: using EnumType = name; \
 		oprt(Unit); \
 		inline ProtoType yield() const reflect_as(val); \
 	} val; \
 public: \
 	inline static const Unit __VA_ARGS__; \
 	oprt(Unit); \
+	template<class AnyType> \
+	constexpr name(AnyType val) : val(reuse_as<Unit>(val)) \
+	{ static_assert(chain_is_ext_of_t<name, typename AnyType::EnumType>::value(), "enumerate error"); } \
 	constexpr name(Unit val) : val(val.val) {} \
 	static constexpr size_t Count = CountOf({ __VA_ARGS__ }); \
 	inline ProtoType yield() const reflect_as(val.yield()); \
 	inline operator Unit() const reflect_as(val); }
 #define enum_flags_opr(name) \
 	inline name operator~ (      ) const reflect_as(~val); \
-	inline name operator& (name v) const reflect_as( val &  v.val); \
-	inline name operator* (name v) const reflect_as( val &  v.val); \
-	inline name operator| (name v) const reflect_as( val |  v.val); \
-	inline name operator+ (name v) const reflect_as( val |  v.val); \
-	inline name operator- (name v) const reflect_as( val & ~v.val); \
-	inline name operator^ (name v) const reflect_as( val ^  v.val); \
-	inline name operator/ (name v) const reflect_as( val ^  v.val); \
-	inline name operator&=(name v) reflect_to_self( val &=  v.val); \
-	inline name operator*=(name v) reflect_to_self( val &=  v.val); \
-	inline name operator|=(name v) reflect_to_self( val |=  v.val); \
-	inline name operator+=(name v) reflect_to_self( val |=  v.val); \
-	inline name operator-=(name v) reflect_to_self( val &= ~v.val); \
+template<class AnyType> inline auto operator^(AnyType v) const reflect_as(__makeResult<EnumType, typename AnyType::EnumType>(yield() ^  v.yield())); \
+template<class AnyType> inline auto operator|(AnyType v) const reflect_as(__makeResult<EnumType, typename AnyType::EnumType>(yield() |  v.yield())); \
+template<class AnyType> inline auto operator&(AnyType v) const reflect_as(__makeResult<EnumType, typename AnyType::EnumType>(yield() &  v.yield())); \
+template<class AnyType> inline auto operator+(AnyType v) const reflect_as(__makeResult<EnumType, typename AnyType::EnumType>(yield() |  v.yield())); \
+template<class AnyType> inline auto operator-(AnyType v) const reflect_as(__makeResult<EnumType, typename AnyType::EnumType>(yield() & ~v.yield())); \
 	inline name operator^=(name v) reflect_to_self( val ^=  v.val); \
-	inline name operator/=(name v) reflect_to_self( val ^=  v.val); \
-	inline bool operator==(name v) const reflect_as( val == v.val); \
-	inline bool operator!=(name v) const reflect_as( val != v.val); \
-	inline bool operator<=(name v) const reflect_as((val &  v.val) ==   val); \
-	inline bool operator>=(name v) const reflect_as((val &  v.val) == v.val)
+	inline name operator|=(name v) reflect_to_self( val |=  v.val); \
+	inline name operator&=(name v) reflect_to_self( val &=  v.val); \
+	inline bool operator==(name v) const reflect_as( yield() == v.yield()); \
+	inline bool operator!=(name v) const reflect_as( yield() != v.yield()); \
+	inline bool operator<=(name v) const reflect_as((yield() &  v.yield()) ==   yield()); \
+	inline bool operator>=(name v) const reflect_as((yield() &  v.yield()) == v.yield())
 #define enum_class_opr(name) \
 	inline bool operator==(name v) const reflect_as(val == v.val); \
 	inline bool operator!=(name v) const reflect_as(val != v.val)
@@ -622,11 +695,6 @@ template<>
 struct TypeList<void> {
 	template<int ind>
 	struct index;
-	//struct index { misuse_assert(ind >= 0, "Index overflowed"); };
-	//template<class ___>
-	//struct index<0, ___> { using type = void; };
-	//template<size_t ind>
-	//using IndexOf = typename index<ind>::type;
 	template<size_t ind>
 	inline void indexof() { misuse_assert(ind >= 0, "index overflowed"); }
 	template<class AnyType>
@@ -686,20 +754,22 @@ public:
 };
 #pragma endregion
 
-#pragma region Const Array
+#pragma region Const ConstArray
 template<class AnyType, size_t Len>
 struct ConstArray {
 	AnyType array[Len];
-	template<size_t xLen, size_t... ind>
-	constexpr ConstArray(const AnyType(&arr)[xLen], std::index_sequence<ind...>, size_t Off = 0) : array{ arr[ind + Off]... } {}
-	template<size_t xLen>
-	constexpr ConstArray(const AnyType(&arr)[xLen], size_t Off = 0) : ConstArray(arr, std::make_index_sequence<Len>{}, Off) {}
+	template<class OtherType, size_t xLen, size_t... ind>
+	constexpr ConstArray(const OtherType(&arr)[xLen], std::index_sequence<ind...>, size_t Off = 0) : array{ arr[ind + Off]... } {}
+	template<class OtherType, size_t xLen>
+	constexpr ConstArray(const OtherType(&arr)[xLen], size_t Off = 0) : ConstArray(arr, std::make_index_sequence<Len>{}, Off) {}
 	static constexpr size_t Length = Len;
+	constexpr operator const arrayof<AnyType, Len>&() const reflect_as(array);
+	template<class OtherType>
+	constexpr operator ConstArray<OtherType, Len>() const reflect_as(array);
 };
 template<class AnyType>
-struct ConstArray<AnyType, 0> {
-	static constexpr size_t Length = 0;
-};
+struct ConstArray<AnyType, 0>
+{ static constexpr size_t Length = 0; };
 template<class AnyType, size_t Len>
 constexpr ConstArray<AnyType, Len> ArrayOf(const AnyType(&arr)[Len], size_t Off = 0) reflect_as({ arr, Off });
 #pragma endregion
@@ -851,6 +921,8 @@ struct LPoint : public POINT {
 	inline LPoint &operator+=(const LPoint &p)       reflect_to_self(x += p.x, y += p.y);
 	inline LPoint &operator-=(const LPoint &p)       reflect_to_self(x -= p.x, y -= p.y);
 	inline LPoint &operator =(const LPoint &p)       reflect_to_self(x = p.x, y = p.y);
+	inline bool    operator==(LPoint pt)       const reflect_as(pt.x == x && pt.y == y);
+	inline bool    operator!=(LPoint pt)       const reflect_as(pt.x != x || pt.y != y);
 	inline operator LPARAM() const reflect_as((LPARAM)this);
 	operator LSize() const;
 };
@@ -862,6 +934,7 @@ struct LSize : public SIZE {
 	LSize(LONG cx, LONG cy) : SIZE{ cx, cy } {}
 	inline LSize  operator+ ()               const reflect_to_self();
 	inline LSize  operator- ()               const reflect_as({ -cx, -cy });
+	inline LSize  operator~ ()               const reflect_as({  cy,  cx });
 	inline LSize  operator* (double l)       const reflect_as({ LONG((double)cx * l), LONG((double)cy * l) });
 	inline LSize  operator/ (double l)       const reflect_as({ LONG((double)cx / l), LONG((double)cy / l) });
 	inline LSize  operator* (int l)          const reflect_as({ cx * l, cy * l });
@@ -873,6 +946,8 @@ struct LSize : public SIZE {
 	inline LSize &operator+=(const LSize &p)       reflect_to_self(cx += p.cx, cy += p.cy);
 	inline LSize &operator-=(const LSize &p)       reflect_to_self(cx -= p.cx, cy -= p.cy);
 	inline LSize &operator =(const LSize &p)       reflect_to_self(cx = p.cx, cy = p.cy);
+	inline bool   operator==(LSize sz)       const reflect_as(sz.cx == cx && sz.cy == cy);
+	inline bool   operator!=(LSize sz)       const reflect_as(sz.cx != cx || sz.cy != cy);
 	inline operator LPARAM() const reflect_as((LPARAM)this);
 	inline operator LPoint() const reflect_as({ cx, cy });
 };
@@ -891,11 +966,17 @@ struct LRect : public RECT {
 	inline LPoint bottom_left()  const reflect_as({ left, bottom });
 	inline LPoint top_right()    const reflect_as({ right,    top });
 	inline LPoint bottom_right() const reflect_as({ right, bottom });
+	inline auto   width()        const reflect_as(right - left);
+	inline auto   height()       const reflect_as(bottom - top);
 	inline LRect  operator+ ()                const reflect_to_self();
 	inline LRect  operator- ()                const reflect_as({ -left,   -top, -right, -bottom });
 	inline LRect  operator~ ()                const reflect_as({ right, bottom,   left,     top });
 	inline LRect  operator+ (const LRect &r)  const reflect_as({ left + r.left, top + r.top, right + r.right, bottom + r.bottom });
 	inline LRect  operator- (const LRect &r)  const reflect_as({ left - r.left, top - r.top, right - r.right, bottom - r.bottom });
+	inline LRect  operator+ (const LPoint &p) const reflect_as({ left + p.x, top + p.y, right + p.x, bottom + p.y });
+	inline LRect  operator- (const LPoint &p) const reflect_as({ left - p.x, top - p.y, right - p.x, bottom - p.y });
+	inline LRect  operator+ (const LSize &p)  const reflect_as({ left, top, right + p.cx, bottom + p.cy });
+	inline LRect  operator- (const LSize &p)  const reflect_as({ left, top, right - p.cx, bottom - p.cy });
 	inline LRect  operator* (double l)        const reflect_as({ LONG((double)left * l), LONG((double)top * l), LONG((double)right * l), LONG((double)bottom * l) });
 	inline LRect  operator/ (double l)        const reflect_as({ LONG((double)left / l), LONG((double)top / l), LONG((double)right / l), LONG((double)bottom / l) });
 	inline LRect  operator* (int l)           const reflect_as({ left * l, top * l, right * l, bottom * l });
@@ -906,8 +987,6 @@ struct LRect : public RECT {
 	inline LRect &operator*=(int l)                 reflect_to_self(left *= l; top *= l, right *= l, bottom *= l);
 	inline LRect &operator+=(const LRect &r)        reflect_to_self(left += r.left, top += r.top, right += r.right, bottom += r.bottom);
 	inline LRect &operator-=(const LRect &r)        reflect_to_self(left -= r.left, top -= r.top, right -= r.right, bottom -= r.bottom);
-	inline LRect  operator+ (const LPoint &p) const reflect_as({ left + p.x, top + p.y, right + p.x, bottom + p.y });
-	inline LRect  operator- (const LPoint &p) const reflect_as({ left - p.x, top - p.y, right - p.x, bottom - p.y });
 	inline LRect &operator+=(const LPoint &p)       reflect_to_self(left += p.x, top += p.y, right += p.x, bottom += p.y);
 	inline LRect &operator-=(const LPoint &p)       reflect_to_self(left -= p.x, top -= p.y, right -= p.x, bottom -= p.y);
 	inline operator MARGINS() const reflect_as({ left, right, top, bottom });
@@ -923,12 +1002,12 @@ inline LRect operator-(const LPoint &p, const LRect &r) reflect_as(-(r - p));
 inline LRect operator&(const LPoint &p, const LSize &s) reflect_as({ p, s });
 inline LRect operator&(const LSize &s, const LPoint &p) reflect_as({ p, s });
 
-class ColorRGB {
+class RGBColor {
 protected:
 	COLORREF cr;
 public:
-	ColorRGB(COLORREF color) : cr(color) {}
-	ColorRGB(BYTE red, BYTE green, BYTE blue) :
+	RGBColor(COLORREF color) : cr(color) {}
+	RGBColor(BYTE red, BYTE green, BYTE blue) :
 		cr(RGB(red, green, blue)) {}
 
 	inline BYTE Red()   const reflect_as(GetRValue(self));
@@ -936,16 +1015,36 @@ public:
 	inline BYTE Blue()  const reflect_as(GetBValue(self));
 
 	template<size_t len>
-	inline static arrayof<ColorRGB, len> &Attach(arrayof<COLORREF, len> &ary) reflect_as(reuse_as<arrayof<ColorRGB, len>>(ary));
+	inline static arrayof<RGBColor, len> &Attach(arrayof<COLORREF, len> &ary) reflect_as(reuse_as<arrayof<RGBColor, len>>(ary));
 	inline operator COLORREF() const { return cr; }
-	inline static ColorRGB &Attach(COLORREF &clr) reflect_as(*(ColorRGB *)&clr);
+	inline static RGBColor &Attach(COLORREF &clr) reflect_as(*(RGBColor *)&clr);
 };
 
+enum_class(Locales, LCID,
+	enum_default Default = LOCALE_CUSTOM_DEFAULT,
+	Unspecified = LOCALE_CUSTOM_UNSPECIFIED,
+	UIDefault   = LOCALE_CUSTOM_UI_DEFAULT,
+	Neutral     = LOCALE_NEUTRAL,
+	Invariant   = LOCALE_INVARIANT);
+enum_flags(TimeFormat, DWORD,
+	enum_default Default = 0,
+	NoMinutesOrSeconds = TIME_NOMINUTESORSECONDS,
+	NoSecond           = TIME_NOSECONDS,
+	NoTimeMarker       = TIME_NOTIMEMARKER,
+	Force24H           = TIME_FORCE24HOURFORMAT);
+enum_flags(DateFormat, DWORD,
+	enum_default Default = 0,
+	ShortDate    = DATE_SHORTDATE,
+	LongDate     = DATE_LONGDATE,
+	CalendarAlt  = DATE_USE_ALT_CALENDAR);
 struct SysTime : public SYSTEMTIME {
-	SysTime() : SYSTEMTIME{ 0 } {}
+	SysTime(Null) : SYSTEMTIME{ 0 } {}
+	SysTime() reflect_to(GetSystemTime(this));
 	SysTime(const FILETIME &ft) assert(FileTimeToSystemTime(&ft, this));
-	inline static SysTime LocalTime()  reflect_to(SysTime st; GetLocalTime(&st), st);
-	inline static SysTime SystemTime() reflect_to(SysTime st; GetSystemTime(&st), st);
+	inline static SysTime Local() reflect_to(SysTime st; GetLocalTime(&st), st);
+	String FormatTime(TimeFormat = TimeFormat::Default, Locales = Locales::Default) const;
+	String FormatDate(DateFormat = DateFormat::Default, Locales = Locales::Default) const;
+	operator String() const;
 };
 #pragma endregion
 

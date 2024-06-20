@@ -365,6 +365,7 @@ template<class AnyChild, class Style = WStyle, class StyleEx = WStyleEx>
 struct CreateStruct : public ChainExtend<CreateStruct<AnyChild, Style, StyleEx>, AnyChild>,
 	protected CREATESTRUCT {
 	CreateStruct() : CREATESTRUCT{ 0 } {}
+	CreateStruct(const CREATESTRUCT *lpCreate) : CREATESTRUCT(*lpCreate) {}
 public: // Property - Param
 	/* W */ inline auto &Param(LPVOID lpCreateParams) reflect_to_child(this->lpCreateParams = lpCreateParams);
 	template<class AnyType = void>
@@ -414,7 +415,7 @@ public: // Property - ClientSize
 	/* W */ inline auto &ClientSize(LSize sz) reflect_as(ClientRect({ Position(), sz }));
 	/* W */ inline auto &ClientSize(LSize sz, UINT dpi) reflect_as(ClientRect({ Position(), sz }, dpi));
 public:
-	inline HWND Create() const assert_reflect_as(auto hwnd = CreateWindowEx(dwExStyle, lpszClass, lpszName, style, x, y, cx, cy, hwndParent, hMenu, hInstance, lpCreateParams), hwnd);
+	inline HWND Create() const assert_reflect_as(auto h = CreateWindowEx(dwExStyle, lpszClass, lpszName, style, x, y, cx, cy, hwndParent, hMenu, hInstance, lpCreateParams), h);
 	inline LPCREATESTRUCT      operator&()       reflect_as(this);
 	inline const CREATESTRUCT *operator&() const reflect_as(this);
 };
@@ -428,6 +429,7 @@ public:
 
 	WindowBase() {}
 	WindowBase(HWND hWnd) : hWnd(hWnd) {}
+	~WindowBase() reflect_to(Destroy());
 
 	using Style = WStyle;
 	using StyleEx = WStyleEx;
@@ -436,7 +438,7 @@ public:
 protected:
 	static ATOM _ClassAtom;
 	static HINSTANCE _hClassModule;
-	static const String _ClassName;
+	static const String &&_ClassName;
 protected:
 	template<class = void>
 	struct ClassBase;
@@ -504,21 +506,21 @@ protected:
 protected:
 	subtype_branch(xCreate);
 public:
+	using CreateStruct = WX::CreateStruct<void, Style, StyleEx>;
 	template<class _AnyChild = void, class Style = WStyle, class StyleEx = WStyleEx>
 	class XCreate :
-		public CreateStruct<KChain<XCreate<_AnyChild, Style, StyleEx>, _AnyChild>, Style, StyleEx> {
+		public WX::CreateStruct<KChain<XCreate<_AnyChild, Style, StyleEx>, _AnyChild>, Style, StyleEx> {
 		WindowBase &target;
 	public:
 		using Child = KChain<XCreate, _AnyChild>;
-		using super = CreateStruct<Child, Style, StyleEx>;
-		XCreate(WindowBase &win) : target(win) { super::Class(_ClassAtom); }
+		using super = WX::CreateStruct<Child, Style, StyleEx>;
+		XCreate(WindowBase &win) : target(win) reflect_to(super::Class(_ClassAtom));
 	public: // Property - Class (delete)
 		/* W */ inline auto &Class(String) = delete;
 		/* W */ inline auto &Class(ATOM) = delete;
 		/* R */ inline const String Class() const = delete;
 	public:
-		inline bool Create() reflect_as(target ? false : bool(target.hWnd = super::Create()));
-		inline operator bool() reflect_as(Create());
+		inline operator bool() reflect_as(target ? false : bool(target.hWnd = super::Create()));
 	};
 	inline auto Create() {
 		Register();
@@ -559,17 +561,15 @@ protected:
 		else
 			return DefWindowProc(hWnd, msgid, wParam, lParam);
 	}
-	inline LRESULT HandleNext() const {
-		throw MSG{ 0 };
-	}
+	inline LRESULT HandleNext() const { throw MSG{ 0 }; }
 	template<int index = 0>
 	static LRESULT CALLBACK MainProc(HWND hWnd, UINT msgid, WPARAM wParam, LPARAM lParam) {
 		auto &Wnd = WindowBase::Attach(hWnd);
-		auto pThis = Wnd.HeapPtr<Child *>(index); //////////////////////
+		auto pThis = (Child *)Wnd.HeapPtr(index);
 		switch (msgid) {
 			case WM_CREATE: {
 				auto lpCreate = (LPCREATESTRUCT)lParam;
-				if ((pThis = (decltype(pThis))lpCreate->lpCreateParams))
+				if ((pThis = (Child *)lpCreate->lpCreateParams))
 					if (Wnd.HeapPtr(pThis, index)) {
 						(HWND &)*force_cast<Window *>(pThis) = hWnd;
 						break;
@@ -587,7 +587,7 @@ protected:
 			switch (msgid) {
 				case WM_NULL:
 					break;
-#define _CALL_(name) ((Child *)pThis)->name
+#define _CALL_(name) pThis->name
 #define MSG_TRANS(msgid, ret, name, argslist, args, send, call) \
 					case msgid: \
 						if constexpr (member_##name##_of<Child>::existed) { \
@@ -599,9 +599,11 @@ protected:
 #include "msg.inl"
 			}
 			if constexpr (member_Callback_of<Child>::existed)
-				return ((Child *)pThis)->Callback(msgid, wParam, lParam);
-		} catch (MSG) {
-		}
+				return pThis->Callback(msgid, wParam, lParam);
+		} catch (MSG msg) {
+			if (msg.message)
+				return CallDefProc(msg.hwnd, msg.message, msg.wParam, msg.lParam);
+		} 
 		return CallDefProc(hWnd, msgid, wParam, lParam);
 	}
 public:
@@ -667,6 +669,10 @@ public:
 
 	inline LPoint ScreenToClient(LPoint pt) const assert_reflect_as(::ScreenToClient(self, &pt), pt);
 	inline LPoint ClientToScreen(LPoint pt) const assert_reflect_as(::ClientToScreen(self, &pt), pt);
+	inline LRect AdjustRect(LRect rc) const assert_reflect_as(::AdjustWindowRect(&rc, Styles().yield(), this->Menu()), rc);
+	inline LRect AdjustRect() const reflect_to(LRect rc, AdjustRect(rc), rc);
+
+	inline void Move(LRect rc, bool bRedraw = true) const assert_reflect_as(::MoveWindow(self, rc.top, rc.left, rc.width(), rc.height(), bRedraw));
 
 	inline auto &Update() assert_reflect_as_child(UpdateWindow(self));
 	inline CDC DC() const reflect_as(GetDC(self));
@@ -790,9 +796,11 @@ public: // Property - ClassAtom
 
 	inline static Window &Attach(HWND &hWnd) reflect_as(reuse_as<Window>(hWnd));
 
-	inline AnyChild *operator*() reflect_as(HeapPtr())
-		inline operator bool() const reflect_as(IsWindow(self));
+	inline operator bool() const reflect_as(IsWindow(self));
 	inline operator HWND() const reflect_as(hWnd);
+
+	inline AnyChild *operator*() reflect_as(HeapPtr());
+	inline const AnyChild *operator*() const reflect_as(HeapPtr());
 	inline operator Window &() reflect_as(reuse_as<Window>(self));
 	inline operator const Window() const reflect_as(hWnd);
 };
@@ -804,11 +812,7 @@ template<class AnyChild, class SubXCreate, class Style, class StyleEx>
 using WXCreate = typename WindowBase<AnyChild>::template XCreate<SubXCreate, Style, StyleEx>;
 template<class AnyChild> ATOM WindowBase<AnyChild>::_ClassAtom = 0;
 template<class AnyChild> HINSTANCE WindowBase<AnyChild>::_hClassModule = O;
-#ifdef UNICODE
-template<class AnyChild> const String WindowBase<AnyChild>::_ClassName = { typeid(typename WindowBase<AnyChild>::Child).name(), MaxLenClass };
-#else
-template<class AnyChild> const String WindowBase<AnyChild>::_ClassName = +CString(typeid(typename WindowBase<AnyChild>::Child).name(), MaxLenClass);
-#endif
+template<class AnyChild> const String &&WindowBase<AnyChild>::_ClassName = Fits(typeid(typename WindowBase<AnyChild>::Child).name(), MaxLenClass);
 #define Window_Based(name) name : public WindowBase<name>
 #define WxCreate() public: struct xCreate : XCreate<xCreate>
 #define WxClass() public: struct xClass : ClassExBase<xClass>
@@ -873,8 +877,9 @@ protected:
 	inline DWORD _Write(HANDLE hOut, LPCWSTR lpszString, DWORD uLength) assert_reflect_as(WriteConsoleW(hOut, lpszString, uLength, &uLength, O), uLength);
 	inline DWORD _Write(HANDLE hOut, LPCSTR lpszString, DWORD uLength) assert_reflect_as(WriteConsoleA(hOut, lpszString, uLength, &uLength, O), uLength);
 public:
-	inline DWORD Log(bool b) reflect_as(b ? Log(T("true")) : Log(T("false")));
+	inline DWORD Log(bool b) reflect_as(b ? Log(_T("true")) : Log(_T("false")));
 	inline DWORD Log(double f) reflect_as(Log(nX(".5d", f)));
+	inline DWORD Log(long i) reflect_as(Log(nX("d", i)));
 	inline DWORD Log(int32_t i) reflect_as(Log(nX("d", i)));
 	inline DWORD Log(int64_t i) reflect_as(Log(nX("d", i)));
 	inline DWORD Log(uint8_t i) reflect_as(Log(nX("d", i)));
@@ -886,13 +891,35 @@ public:
 	inline DWORD Log(wchar_t chs) reflect_as(Log((arrayof<wchar_t, 1>&)chs));
 	inline DWORD Log(const String &str) reflect_as(_Write(hOut, str, (DWORD)str.Length()));
 	template<class AnyType>
-	inline DWORD Log(const AnyType &tt) reflect_as(Log(tt.operator String()));
+	inline DWORD Log(const AnyType &t) reflect_as(Log((String)t));
 	template<size_t len>
 	inline DWORD Log(const char(&Chars)[len]) reflect_as(_Write(hOut, Chars, len));
 	template<size_t len>
 	inline DWORD Log(const wchar_t(&Chars)[len]) reflect_as(_Write(hOut, Chars, len));
 	template<class... Args>
 	inline DWORD Log(const Args& ...args) reflect_as((Log(args) + ...));
+public:
+	inline DWORD Err(bool b) reflect_as(b ? Err(_T("true")) : Err(_T("false")));
+	inline DWORD Err(double f) reflect_as(Err(nX(".5d", f)));
+	inline DWORD Err(long i) reflect_as(Err(nX("d", i)));
+	inline DWORD Err(int32_t i) reflect_as(Err(nX("d", i)));
+	inline DWORD Err(int64_t i) reflect_as(Err(nX("d", i)));
+	inline DWORD Err(uint8_t i) reflect_as(Err(nX("d", i)));
+	inline DWORD Err(uint16_t i) reflect_as(Err(nX("d", i)));
+	inline DWORD Err(uint32_t i) reflect_as(Err(nX("d", i)));
+	inline DWORD Err(uint64_t i) reflect_as(Err(nX("d", i)));
+	inline DWORD Err(DWORD i) reflect_as(Err(nX("d", i)));
+	inline DWORD Err(char chs) reflect_as(Err((arrayof<char, 1> &)chs));
+	inline DWORD Err(wchar_t chs) reflect_as(Err((arrayof<wchar_t, 1> &)chs));
+	inline DWORD Err(const String &str) reflect_as(_Write(hErr, str, (DWORD)str.Length()));
+	template<class AnyType>
+	inline DWORD Err(const AnyType &t) reflect_as(Err((String)t));
+	template<size_t len>
+	inline DWORD Err(const char(&Chars)[len]) reflect_as(_Write(hErr, Chars, len));
+	template<size_t len>
+	inline DWORD Err(const wchar_t(&Chars)[len]) reflect_as(_Write(hErr, Chars, len));
+	template<class... Args>
+	inline DWORD Err(const Args& ...args) reflect_as((Err(args) + ...));
 public:
 	inline auto &operator[](LPoint p) reflect_as(CurPos(p));
 	inline auto &operator[](bool bCurVis) reflect_as(CurVis(bCurVis));

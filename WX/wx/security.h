@@ -21,7 +21,7 @@ public:
 	constexpr SecurityIdentifiersAuthority(const SID_IDENTIFIER_AUTHORITY &sia) : sia(sia) {}
 	inline bool operator==(const SecurityIdentifiersAuthority &s) const reflect_as(force_cast<uint64_t>(self) == force_cast<uint64_t>(s));
 	inline bool operator!=(const SecurityIdentifiersAuthority &s) const reflect_as(force_cast<uint64_t>(self) != force_cast<uint64_t>(s));
-	inline operator String() const reflect_as(Cats(nX("02x", sia.Value[0]), T("-"), nX("02x", sia.Value[1]), T("-"), nX("02x", sia.Value[2]), T("-"), nX("02x", sia.Value[3]), T("-"), nX("02x", sia.Value[4]), T("-"), nX("02x", sia.Value[5])));
+	inline operator String() const reflect_as(Cats(nX("02x", sia.Value[0]), _T("-"), nX("02x", sia.Value[1]), _T("-"), nX("02x", sia.Value[2]), _T("-"), nX("02x", sia.Value[3]), _T("-"), nX("02x", sia.Value[4]), _T("-"), nX("02x", sia.Value[5])));
 	inline PSID_IDENTIFIER_AUTHORITY operator &() const reflect_as(&sia);
 };
 using SecAuthorID = SecurityIdentifiersAuthority;
@@ -104,7 +104,7 @@ public: //
 	inline bool operator==(PSID pSID) const reflect_as(EqualSid(this->pSID, pSID));
 	inline bool operator!=(PSID pSID) const reflect_as(EqualSid(this->pSID, pSID));
 
-	inline operator String() const assert_reflect_to(AutoPointer<_M_(TCHAR, Local)> lpszSID, ConvertSidToStringSid(this->pSID, &lpszSID), +CString(lpszSID, MaxLenClass));
+	inline operator String() const assert_reflect_to(AutoPointer<_M_(Local, TCHAR)> szSID(LocalHeap), ConvertSidToStringSid(this->pSID, &(*szSID)), +CString(&szSID, MaxLenClass));
 	inline PSID operator&() const reflect_as(this->pSID);
 	inline operator bool() const reflect_as(this->pSID ? IsValidSid(this->pSID) : false);
 };
@@ -112,7 +112,6 @@ using SecID = SecurityIdentifier;
 #pragma endregion
 
 #pragma region Access Control
-
 enum_flags(AccessPermission, DWORD,
 	QueryValue          = KEY_QUERY_VALUE,
 	SetValue            = KEY_SET_VALUE,

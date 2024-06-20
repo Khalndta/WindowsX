@@ -328,7 +328,7 @@ public:
 			if (auto len = env.Length())
 				maxlen += env.Length() + 1;
 		if (maxlen <= 1) return O;
-		LPTCH lpEnv = (LPTCH)Heap::Now()->Alloc(maxlen * sizeof(TCHAR)), pEnv = lpEnv;
+		LPTCH lpEnv = (LPTCH)Heap::This.Alloc(maxlen * sizeof(TCHAR)), pEnv = lpEnv;
 		for (const String &env : envs)
 			if (auto len = env.Length()) {
 				CopyMemory(pEnv, (LPCTSTR)env, len * sizeof(TCHAR));
@@ -344,7 +344,7 @@ public:
 			if (var)
 				maxlen += var.name.Length() + var.value.Length() + 2;
 		if (maxlen <= 1) return O;
-		LPTCH lpEnv = (LPTCH)Heap::Now()->Alloc(maxlen * sizeof(TCHAR)), pEnv = lpEnv;
+		LPTCH lpEnv = (LPTCH)Heap::This.Alloc(maxlen * sizeof(TCHAR)), pEnv = lpEnv;
 		for (const Variable &var : vars)
 			if (var) {
 				CopyMemory(pEnv, (LPCTSTR)var.name, var.name.Length() * sizeof(TCHAR));
@@ -361,7 +361,7 @@ public:
 
 	inline bool Free() {
 		if (lpEnv)
-			if (!Heap::Now()->Free(lpEnv))
+			if (!Heap::This.Free(lpEnv))
 				return true;
 		lpEnv = O;
 		return false;
