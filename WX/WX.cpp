@@ -250,7 +250,7 @@ class Window_Based(SiDiWindow) {
 		if (sz.cx <= 0) Pos->cx = border.cx + 1, sz.cx = 1;
 		if (sz.cy <= 0) Pos->cy = border.cy + 1, sz.cy = 1;
 		if (pfnOnResize)
-			if (!pfnOnResize(sz.cx, sz.cy))
+			if (!pfnOnResize((uint16_t)sz.cx, (uint16_t)sz.cy))
 				return false;
 		panel.Size(sz);
 		return true;
