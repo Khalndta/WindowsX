@@ -232,18 +232,6 @@ constexpr UINT MaxLenNotice = 32767;
 
 #pragma region String
 
-template<class CharType = TCHAR> const StringBase<CharType> CString(size_t uLen, const CharType *lpString);
-template<class CharType = TCHAR> const StringBase<CharType> CString(const CharType *lpString, size_t maxLen);
-
-template<class CharType>
-inline size_t Length(const CharType *lpString, size_t MaxLen) {
-	if constexpr (std::is_same_v<CharType, CHAR>)
-		assert(SUCCEEDED(StringCchLengthA(lpString, MaxLen, &MaxLen)))
-	else if constexpr (std::is_same_v<CharType, WCHAR>)
-		assert(SUCCEEDED(StringCchLengthW(lpString, MaxLen, &MaxLen)));
-	return MaxLen;
-}
-
 enum_class(CodePages, UINT, 
 	Active       = CP_ACP,
 	OEM          = CP_OEMCP,
@@ -253,32 +241,35 @@ enum_class(CodePages, UINT,
 	UTF7         = CP_UTF7,
 	UTF8         = CP_UTF8);
 enum StrFlags : size_t {
-	STR_DEF = 0,
+	STR_DEF      = 0,
 	STR_READONLY = 1,
-	STR_MOVABLE = 2,
-	STR_RELEASE = 4
+	STR_MOVABLE  = 2,
+	STR_RELEASE  = 4
 };
+
+template<class CharType> String Fits(const CharType *lpString, size_t MaxLen, CodePages cp = CodePages::Active);
+template<class CharType = TCHAR> const StringBase<CharType> CString(size_t uLen, const CharType *lpString);
+template<class CharType = TCHAR> const StringBase<CharType> CString(const CharType *lpString, size_t maxLen);
+template<class CharType>
+inline size_t Length(const CharType *lpString, size_t MaxLen) {
+	if constexpr (std::is_same_v<CharType, CHAR>)
+		assert(SUCCEEDED(StringCchLengthA(lpString, MaxLen, &MaxLen)))
+	else if constexpr (std::is_same_v<CharType, WCHAR>)
+		assert(SUCCEEDED(StringCchLengthW(lpString, MaxLen, &MaxLen)));
+	return MaxLen;
+}
+
 template<class CharType>
 class StringBase {
 	mutable CharType *lpsz = O;
 	mutable size_t Len : sizeof(void*) * 8 - 3;
 	mutable size_t Flags : 3;
 private:
+	template<class _CharType>
+	friend String Fits(const _CharType *lpString, size_t MaxLen, CodePages cp);
 	template<class _CharType> friend const StringBase<_CharType> CString(size_t uLen, const _CharType *lpString);
 	template<class _CharType> friend const StringBase<_CharType> CString(const _CharType *lpString, size_t maxLen);
-	friend const StringA operator ""_A(LPCSTR lpString, size_t uLen);
-	friend const StringW operator ""_W(LPCWSTR lpString, size_t uLen);
-	friend const String operator ""_S(LPCTSTR lpString, size_t uLen);
 
-	StringBase(size_t len, UINT flags, CharType *lpBuffer) :
-		lpsz(lpBuffer), Len((UINT)len), Flags(flags) {
-		if (len <= 0 || !lpBuffer) {
-			Len = 0;
-			lpsz = O;
-		}
-	}
-	StringBase(size_t len, const CharType *lpString) : StringBase(len, STR_READONLY, const_cast<CharType *>(lpString)) {}
-public:
 	inline static CharType *Realloc(size_t len, CharType *lpsz) {
 		if (!lpsz && len <= 0) return O;
 		if (len <= 0) {
@@ -293,6 +284,15 @@ public:
 	}
 	inline static void Free(void *lpsz) assert_reflect_as(HeapFree(GetProcessHeap(), 0, lpsz));
 
+	StringBase(size_t len, UINT flags, CharType *lpBuffer) :
+		lpsz(lpBuffer), Len((UINT)len), Flags(flags) {
+		if (len <= 0 || !lpBuffer) {
+			Len = 0;
+			lpsz = O;
+		}
+	}
+	StringBase(size_t len, const CharType *lpString) : StringBase(len, STR_READONLY, const_cast<CharType *>(lpString)) {}
+public:
 	StringBase() {}
 	StringBase(Null) {}
 	StringBase(const StringBase &) = delete;
@@ -333,7 +333,7 @@ public:
 //	}
 
 	~StringBase() { operator~(); }
-
+public:
 	inline auto &Trunc() {
 		assert(Flags & STR_MOVABLE);
 		Len = (UINT)WX::Length(lpsz, Len);
@@ -363,7 +363,7 @@ public:
 	inline CharType *end() reflect_as(Len &&lpsz ? lpsz + Len : O);
 	inline const CharType *begin() const reflect_as(Len ? lpsz : O);
 	inline const CharType *end() const reflect_as(Len && lpsz ? lpsz + Len : O);
-
+public:
 	inline operator bool() const reflect_as(lpsz && Len);
 	inline operator CharType *() {
 		assert(!(Flags & STR_READONLY));
@@ -428,34 +428,34 @@ public:
 
 inline const StringA operator ""_A(LPCSTR lpString, size_t uLen) {
 	if (uLen == 0 || !*lpString) return O;
-	return { uLen, lpString };
+	return CString(uLen, lpString);
 }
 inline const StringW operator ""_W(LPCWSTR lpString, size_t uLen) {
 	if (uLen == 0 || !*lpString) return O;
-	return { uLen, lpString };
+	return CString(uLen, lpString);
 }
 inline const String operator ""_S(LPCTSTR lpString, size_t uLen) {
 	if (uLen == 0 || !*lpString) return O;
-	return { uLen, lpString };
+	return CString(uLen, lpString);
 }
 
 #define S(str) TEXT(str##_S)
 
 template<class CharType>
-const StringBase<CharType> CString(size_t Len, const CharType *lpString) {
+inline const StringBase<CharType> CString(size_t Len, const CharType *lpString) {
 	if (Len == 0 || !*lpString) return O;
 	return { Len, lpString };
 }
 template<class CharType>
-const StringBase<CharType> CString(const CharType *lpString, size_t MaxLen) {
+inline const StringBase<CharType> CString(const CharType *lpString, size_t MaxLen) {
 	if (!lpString) return O;
-	return { ::Length(lpString, MaxLen), lpString };
+	return { WX::Length(lpString, MaxLen), lpString };
 }
 
 template<class CharType>
-inline String Fits(const CharType *lpString, size_t MaxLen, CodePages cp = CodePages::Active) {
+inline String Fits(const CharType *lpString, size_t MaxLen, CodePages cp) {
 	if (!lpString || !MaxLen) return O;
-	auto uLen = ::Length(lpString, MaxLen);
+	auto uLen = WX::Length(lpString, MaxLen);
 	if (!uLen) return O;
 	if constexpr (std::is_same_v<CharType, TCHAR>) {
 		auto lpsz = String::Alloc(uLen);

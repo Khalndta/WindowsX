@@ -628,12 +628,13 @@ public:
 public:
 	inline auto Send() {
 		class Pack {
+			friend class WindowBase<AnyChild>;
 			Window win;
-		public:
 			Pack(HWND hwnd) : win(hwnd) {}
-#define _SEND_(msgid, wparam, lparam) win.Send(msgid, wparam, lparam) 
+		public:
+#define _SEND_(msgid, wparam, lparam) this->win.Send(msgid, wparam, lparam) 
 #define MSG_TRANS(msgid, ret, name, argslist, args, send, call) \
-	inline ret name argslist reflect_as(send);
+			inline ret name argslist reflect_as(send);
 #include "msg.inl"
 		} p = (HWND)self;
 		return p;
