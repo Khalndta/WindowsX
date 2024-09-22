@@ -1,7 +1,7 @@
 #pragma once
 
-#include "resource.h"
-#include "security.h"
+#include "./resource.h"
+#include "./security.h"
 
 namespace WX {
 
@@ -105,7 +105,7 @@ struct FileTime : protected FILETIME {
 	inline const FILETIME *operator &() const reflect_as(this);
 	inline operator String() const reflect_as(((SysTime)self));
 };
-struct FileTimes { FileTime Created, LastAccess, LastWrite; };
+struct FileTimes { FileTime Creation, LastAccess, LastWrite; };
 struct FileBaseInfo : protected FILE_BASIC_INFO {
 	FileBaseInfo() {}
 public: // Property - TimeCreation
@@ -127,39 +127,40 @@ public:
 	inline FILE_BASIC_INFO *operator &() reflect_as(this);
 	inline const FILE_BASIC_INFO *operator &() const reflect_as(this);
 };
-class Handle_Based(File) {
-protected:
-	using super = HandleBase<File>;
-	File(HANDLE hFile) : super(hFile) {}
+class BaseOf_Handle(File) {
 public:
+	using super = HandleBase<File>;
 	using Access = FileAccess;
 	using Shares = FileShares;
 	using Attribute = FileAttribute;
 	using Flag = FileFlag;
 	using Types = FileTypes;
-
+protected:
+	File(const File &f) : super(f) {}
+	File(HANDLE h) : super(h) {}
+public:
 	File() {}
 	File(Null) {}
-	File(File &file) : super(file) {}
-	File(File &&file) : super(file) {}
+	File(File &f) : super(f) {}
+	File(File &&f) : super(f) {}
 
 	using super::operator=;
 
 	class CreateStruct {
-		friend class File;
 		LPCTSTR lpFileName;
 		Access dwDesiredAccess = Access::No;
 		Shares dwShareMode = Shares::No;
-		LPSECURITY_ATTRIBUTES lpSecurityAttributes = O;
+		LPSECURITY_ATTRIBUTES lpAttributes = O;
 		DWORD dwCreationDisposition = 0;
 		DWORD dwFlagsAndAttributes = 0;
 		HANDLE hTemplateFile = O;
+	public:
 		CreateStruct(LPCTSTR lpFileName) : lpFileName(lpFileName) {}
 	public:
 		inline auto &Accesses(Access dwDesiredAccess) reflect_to_self(this->dwDesiredAccess = dwDesiredAccess);
 		inline auto &Share(Shares dwShareMode) reflect_to_self(this->dwShareMode = dwShareMode);
-		inline auto &Security(const SecAttr &SecurityAttributes) reflect_to_self(this->lpSecurityAttributes = &SecurityAttributes);
-		inline auto &Security(LPSECURITY_ATTRIBUTES lpSecurityAttributes) reflect_to_self(this->lpSecurityAttributes = lpSecurityAttributes);
+		inline auto &Security(const SecAttr &SA) reflect_to_self(this->lpAttributes = &SA);
+		inline auto &Security(LPSECURITY_ATTRIBUTES lpAttributes) reflect_to_self(this->lpAttributes = lpAttributes);
 		inline auto &Template(HANDLE hTemplateFile) reflect_to_self(this->hTemplateFile = hTemplateFile);
 		inline auto &Attributes(Attribute dwAttributes) reflect_to_self(this->dwFlagsAndAttributes = dwAttributes.yield());
 		inline auto &Flags(Flag dwFlags) reflect_to_self(this->dwFlagsAndAttributes = dwFlags.yield());
@@ -170,28 +171,31 @@ public:
 		inline auto &OpenAlways() reflect_to_self(this->dwCreationDisposition = OPEN_ALWAYS);
 		inline auto &TruncateExisting() reflect_to_self(this->dwCreationDisposition = TRUNCATE_EXISTING);
 	public:
-		inline operator File() assert_reflect_as(File h = CreateFile(lpFileName, dwDesiredAccess.yield(), dwShareMode.yield(), lpSecurityAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile), h);
+		inline operator File() assert_reflect_as(auto h = CreateFile(lpFileName, dwDesiredAccess.yield(), dwShareMode.yield(), lpAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile), h);
 	};
 	inline static CreateStruct Create(LPCTSTR lpFileName) reflect_as(lpFileName);
 
-	class MapCreateStruct {
-		friend class File;
+	class MappingCreateStruct {
 		HANDLE hFile;
-		LPSECURITY_ATTRIBUTES lpFileMappingAttributes = O;
-		DWORD flProtect = 0;
+		LPSECURITY_ATTRIBUTES lpAttributes = O;
+		DWORD flProtect = PageAccess::ReadWrite.yield();
 		DWORD dwMaximumSizeHigh = 0;
 		DWORD dwMaximumSizeLow = 0;
 		LPCTSTR lpName;
-		MapCreateStruct(HANDLE hFile, LPCTSTR lpName) : hFile(hFile), lpName(lpName) {}
 	public:
-		inline auto &Security(const SecAttr &FileMappingAttributes) reflect_to_self(this->lpFileMappingAttributes = &FileMappingAttributes);
-		inline auto &Security(LPSECURITY_ATTRIBUTES lpFileMappingAttributes) reflect_to_self(this->lpFileMappingAttributes = lpFileMappingAttributes);
+		MappingCreateStruct(HANDLE hFile, LPCTSTR lpName, uint64_t size) :
+			hFile(hFile),
+			dwMaximumSizeHigh((DWORD)(size >> 32)), dwMaximumSizeLow((DWORD)size),
+			lpName(lpName) {}
+	public:
+		inline auto &Security(const SecAttr &SA) reflect_to_self(this->lpAttributes = &SA);
+		inline auto &Security(LPSECURITY_ATTRIBUTES lpAttributes) reflect_to_self(this->lpAttributes = lpAttributes);
 		inline auto &Protect(PageAccess pa) reflect_to_self(this->flProtect = pa.yield());
-		inline auto &Size(uint64_t size) reflect_to_self(this->dwMaximumSizeHigh = (DWORD)(size >> 32), this->dwMaximumSizeLow = (DWORD)size);
 	public:
-		inline operator File() assert_reflect_as(File f = CreateFileMapping(hFile, lpFileMappingAttributes, flProtect, dwMaximumSizeHigh, dwMaximumSizeLow, lpName), f);
+		inline operator File() assert_reflect_as(auto h = CreateFileMapping(hFile, lpAttributes, flProtect, dwMaximumSizeHigh, dwMaximumSizeLow, lpName), h);
 	};
-	inline MapCreateStruct CreateMapping(LPCTSTR lpName = O) reflect_as({ self, lpName });
+	inline MappingCreateStruct CreateMapping(LPCTSTR lpName, uint64_t size) reflect_as({ self, lpName, size });
+	inline MappingCreateStruct CreateMapping(uint64_t size) reflect_as({ self, O, size });
 
 	class MapPointer {
 		friend class File;
@@ -208,7 +212,7 @@ public:
 		template<class AnyType>
 		inline operator AnyType *() reflect_as((AnyType *)ptr);
 	};
-	inline MapPointer MapView(MapAccess acs = MapAccess::All, uint64_t offset = 0, size_t size = 0) assert_reflect_as(auto ptr = MapViewOfFile(self, acs.yield(), (DWORD)(offset >> 32), (DWORD)offset, size), ptr);
+	inline MapPointer MapView(MapAccess acs = MapAccess::All, uint64_t offset = 0, size_t size = 0) assert_reflect_as(auto p = MapViewOfFile(self, acs.yield(), (DWORD)(offset >> 32), (DWORD)offset, size), p);
 
 	inline static bool Delete(LPCTSTR lpFileName) reflect_as(DeleteFile(lpFileName));
 	inline static bool Copy(LPCTSTR lpExistingFileName, LPCTSTR lpNewFileName, bool bFailIfExists = false) reflect_as(CopyFile(lpExistingFileName, lpNewFileName, bFailIfExists));
@@ -222,7 +226,7 @@ public:
 public: // Property - Size
 	/* W */ inline uint64_t Size() const assert_reflect_to(uint64_t size = 0, GetFileSizeEx(self, (PLARGE_INTEGER)&size), size);
 public: // Property - Time
-	/* W */ inline FileTimes Times() const assert_reflect_to(FileTimes ts, GetFileTime(self, &ts.Created, &ts.LastAccess, &ts.LastWrite), ts);
+	/* W */ inline FileTimes Times() const assert_reflect_to(FileTimes ts, GetFileTime(self, &ts.Creation, &ts.LastAccess, &ts.LastWrite), ts);
 public: // Property - Type
 	/* W */ inline Types Type() const check_reflect_to(auto type = GetFileType(self), force_cast<Types>(type));
 #pragma endregion
@@ -364,7 +368,8 @@ public:
 	using States = CommStates;
 	using Timeout = CommTimeout;
 	using Event = CommEvent;
-
+protected:
+public:
 	Comm() {}
 	Comm(File fCom) : fCom(fCom) {}
 	Comm(File::CreateStruct &fc) : fCom(fc) {}

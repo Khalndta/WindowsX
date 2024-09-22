@@ -3,9 +3,28 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.9.34622.214
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WX", "WX\WX.vcxproj", "{F254499E-DD86-4448-94C3-004A61040651}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "WX_Headers", "WX_Headers", "{1A3271F1-404D-44F9-A420-8F23595E78D2}"
+	ProjectSection(SolutionItems) = preProject
+		wx\control.h = wx\control.h
+		wx\defs.h = wx\defs.h
+		wx\dialog.h = wx\dialog.h
+		wx\dll.inl = wx\dll.inl
+		wx\file.h = wx\file.h
+		wx\msg.inl = wx\msg.inl
+		wx\msg_ctl.inl = wx\msg_ctl.inl
+		wx\realtime.h = wx\realtime.h
+		wx\resource.h = wx\resource.h
+		wx\security.h = wx\security.h
+		wx\type.h = wx\type.h
+		wx\window.h = wx\window.h
+	EndProjectSection
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WX2", "WX2\WX2.vcxproj", "{D386AAD6-AE05-4275-A45A-32B111615E74}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WX", "vcxproj\WX.vcxproj", "{F254499E-DD86-4448-94C3-004A61040651}"
+	ProjectSection(ProjectDependencies) = postProject
+		{E02D57BB-75FA-4919-9D43-438BF4EACE10} = {E02D57BB-75FA-4919-9D43-438BF4EACE10}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WX_DLL", "vcxproj\WX_DLL.vcxproj", "{E02D57BB-75FA-4919-9D43-438BF4EACE10}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -35,22 +54,22 @@ Global
 		{F254499E-DD86-4448-94C3-004A61040651}.Release|x64.Build.0 = Release|x64
 		{F254499E-DD86-4448-94C3-004A61040651}.Release|x86.ActiveCfg = Release|Win32
 		{F254499E-DD86-4448-94C3-004A61040651}.Release|x86.Build.0 = Release|Win32
-		{D386AAD6-AE05-4275-A45A-32B111615E74}.Debug LLVM|x64.ActiveCfg = Debug|x64
-		{D386AAD6-AE05-4275-A45A-32B111615E74}.Debug LLVM|x64.Build.0 = Debug|x64
-		{D386AAD6-AE05-4275-A45A-32B111615E74}.Debug LLVM|x86.ActiveCfg = Debug|Win32
-		{D386AAD6-AE05-4275-A45A-32B111615E74}.Debug LLVM|x86.Build.0 = Debug|Win32
-		{D386AAD6-AE05-4275-A45A-32B111615E74}.Debug|x64.ActiveCfg = Debug|x64
-		{D386AAD6-AE05-4275-A45A-32B111615E74}.Debug|x64.Build.0 = Debug|x64
-		{D386AAD6-AE05-4275-A45A-32B111615E74}.Debug|x86.ActiveCfg = Debug|Win32
-		{D386AAD6-AE05-4275-A45A-32B111615E74}.Debug|x86.Build.0 = Debug|Win32
-		{D386AAD6-AE05-4275-A45A-32B111615E74}.Release LLVM|x64.ActiveCfg = Release|x64
-		{D386AAD6-AE05-4275-A45A-32B111615E74}.Release LLVM|x64.Build.0 = Release|x64
-		{D386AAD6-AE05-4275-A45A-32B111615E74}.Release LLVM|x86.ActiveCfg = Release|Win32
-		{D386AAD6-AE05-4275-A45A-32B111615E74}.Release LLVM|x86.Build.0 = Release|Win32
-		{D386AAD6-AE05-4275-A45A-32B111615E74}.Release|x64.ActiveCfg = Release|x64
-		{D386AAD6-AE05-4275-A45A-32B111615E74}.Release|x64.Build.0 = Release|x64
-		{D386AAD6-AE05-4275-A45A-32B111615E74}.Release|x86.ActiveCfg = Release|Win32
-		{D386AAD6-AE05-4275-A45A-32B111615E74}.Release|x86.Build.0 = Release|Win32
+		{E02D57BB-75FA-4919-9D43-438BF4EACE10}.Debug LLVM|x64.ActiveCfg = Debug|x64
+		{E02D57BB-75FA-4919-9D43-438BF4EACE10}.Debug LLVM|x64.Build.0 = Debug|x64
+		{E02D57BB-75FA-4919-9D43-438BF4EACE10}.Debug LLVM|x86.ActiveCfg = Debug|Win32
+		{E02D57BB-75FA-4919-9D43-438BF4EACE10}.Debug LLVM|x86.Build.0 = Debug|Win32
+		{E02D57BB-75FA-4919-9D43-438BF4EACE10}.Debug|x64.ActiveCfg = Debug|x64
+		{E02D57BB-75FA-4919-9D43-438BF4EACE10}.Debug|x64.Build.0 = Debug|x64
+		{E02D57BB-75FA-4919-9D43-438BF4EACE10}.Debug|x86.ActiveCfg = Debug|Win32
+		{E02D57BB-75FA-4919-9D43-438BF4EACE10}.Debug|x86.Build.0 = Debug|Win32
+		{E02D57BB-75FA-4919-9D43-438BF4EACE10}.Release LLVM|x64.ActiveCfg = Release|x64
+		{E02D57BB-75FA-4919-9D43-438BF4EACE10}.Release LLVM|x64.Build.0 = Release|x64
+		{E02D57BB-75FA-4919-9D43-438BF4EACE10}.Release LLVM|x86.ActiveCfg = Release|Win32
+		{E02D57BB-75FA-4919-9D43-438BF4EACE10}.Release LLVM|x86.Build.0 = Release|Win32
+		{E02D57BB-75FA-4919-9D43-438BF4EACE10}.Release|x64.ActiveCfg = Release|x64
+		{E02D57BB-75FA-4919-9D43-438BF4EACE10}.Release|x64.Build.0 = Release|x64
+		{E02D57BB-75FA-4919-9D43-438BF4EACE10}.Release|x86.ActiveCfg = Release|Win32
+		{E02D57BB-75FA-4919-9D43-438BF4EACE10}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

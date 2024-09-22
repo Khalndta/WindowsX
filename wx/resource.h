@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "./type.h"
+#include "./file.h"
 
 namespace WX {
 
@@ -16,19 +17,18 @@ template<class AnyChild, class BaseHandle>
 class GObjectBase : public ChainExtend<GObjectBase<AnyChild, BaseHandle>, AnyChild> {
 	misuse_assert((std::is_convertible_v<BaseHandle, HGDIOBJ>),
 				 "BaseHandle must can be converted to HANDLE");
-protected:
-	HGDIOBJ hobj = O;
-	friend union RefAs<GObjectBase>;
-	GObjectBase(HGDIOBJ hobj) : hobj(hobj) {}
 public:
 	using Child = KChain<GObjectBase, AnyChild>;
-	
+protected:
+	friend union RefAs<GObjectBase>;
+	mutable HGDIOBJ hobj = O;
+	GObjectBase(HGDIOBJ h) : hobj(h) {}
+	GObjectBase(const GObjectBase &h) : hobj(h.hobj) reflect_to(h.hobj = O);
+public:
 	GObjectBase() {}
 	GObjectBase(Null) {}
 	GObjectBase(GObjectBase &obj) : hobj(obj.hobj) { obj.hobj = O; }
 	GObjectBase(GObjectBase &&obj) : hobj(obj.hobj) { obj.hobj = O; }
-	GObjectBase(const GObjectBase &) = delete;
-
 	~GObjectBase() reflect_to(Delete());
 
 	inline bool Delete() {
@@ -43,12 +43,13 @@ public:
 
 	inline Child &operator=(Child &obj) reflect_to_child(std::swap(obj.hobj, hobj));
 	inline Child &operator=(Child &&obj) reflect_to_child(std::swap(obj.hobj, hobj));
+	inline const Child &operator=(const Child &obj) const reflect_to_child(std::swap(obj.hobj, hobj));
 
 	inline static auto &Attach(BaseHandle &hObj) reflect_as(reuse_as<AnyChild>(hObj));
 	inline static const auto &Attach(const BaseHandle &hObj) reflect_as(reuse_as<const AnyChild>(hObj));
 };
 using CGObject = RefAs<GObject>;
-#define GDI_Based(name, idt) name : public GObjectBase<name, idt>
+#define BaseOf_GDI(name, idt) name : public WX::GObjectBase<name, idt>
 #pragma endregion
 
 #pragma region Bitmap
@@ -116,43 +117,56 @@ public:
 	inline operator const BITMAPINFO *() const reflect_as(this);
 };
 #pragma pack()
-class GDI_Based(Bitmap, HBITMAP) {
-	friend union RefAs<Bitmap>;
-	Bitmap(HBITMAP h) : super(h) {}
+struct BitmapLogic : protected BITMAP {
+	BitmapLogic() : BITMAP{ 0 } {}
+public: // Property - Width
+	/* W */ inline auto &Width(LONG bmWidth) reflect_to_self(this->bmWidth = bmWidth);
+	/* R */ inline LONG  Width() const reflect_as(this->bmWidth);
+public: // Property - Height
+	/* W */ inline auto &Height(LONG bmHeight) reflect_to_self(this->bmHeight = bmHeight);
+	/* R */ inline LONG  Height() const reflect_as(this->bmHeight);
+public: // Property - Size
+	/* W */ inline auto &Size(LSize sz) reflect_to_self(this->bmWidth = sz.cx, this->bmHeight = sz.cy);
+	/* R */ inline LSize Size() const reflect_as({ this->bmWidth, this->bmHeight });
+public: // Property - WidthBytes
+	/* W */ inline auto &WidthBytes(LONG bmWidthBytes) reflect_to_self(this->bmWidthBytes = bmWidthBytes);
+	/* R */ inline LONG  WidthBytes() const reflect_as(this->bmWidthBytes);
+public: // Property - Planes
+	/* W */ inline auto &Planes(WORD bmPlanes) reflect_to_self(this->bmPlanes = bmPlanes);
+	/* R */ inline WORD  Planes() const reflect_as(this->bmPlanes);
+public: // Property - BitsPerPixel
+	/* W */ inline auto &BitsPerPixel(WORD bmBitsPixel) reflect_to_self(this->bmBitsPixel = bmBitsPixel);
+	/* R */ inline WORD  BitsPerPixel() const reflect_as(this->bmBitsPixel);
+public: // Property - Colors
+	/* W */ inline auto &Colors(LPVOID bmBits) reflect_to_self(this->bmBits = bmBits);
+	/* R */ inline LPVOID Colors() const reflect_as(this->bmBits);
+public:
+	inline HBITMAP Create() const assert_reflect_as(auto h = CreateBitmapIndirect(this), h);
+	inline operator HBITMAP() const reflect_as(Create());
+	inline BITMAP *operator&() reflect_as(this);
+	inline const BITMAP *operator&() const reflect_as(this);
+};
+class BaseOf_GDI(Bitmap, HBITMAP) {
 public:
 	using super = GObjectBase<Bitmap, HBITMAP>;
 	using Header = BitmapHeader;
 	using File = BitmapHeader;
+	using Logic = BitmapLogic;
+protected:
+	friend union RefAs<Bitmap>;
+	Bitmap(HBITMAP h) : super(h) {}
+	Bitmap(const Bitmap &b) : super(b) {}
+public:
+	Bitmap() {}
+	Bitmap(Null) {}
+	Bitmap(Bitmap &b) : super(b) {}
+	Bitmap(Bitmap &&b) : super(b) {}
+	~Bitmap() reflect_to(Destroy());
 
-	struct Logic : protected BITMAP {
-		Logic() : BITMAP{ 0 } {}
-	public: // Property - Width
-		/* W */ inline auto &Width(LONG bmWidth) reflect_to_self(this->bmWidth = bmWidth);
-		/* R */ inline LONG  Width() const reflect_as(this->bmWidth);
-	public: // Property - Height
-		/* W */ inline auto &Height(LONG bmHeight) reflect_to_self(this->bmHeight = bmHeight);
-		/* R */ inline LONG  Height() const reflect_as(this->bmHeight);
-	public: // Property - Size
-		/* W */ inline auto &Size(LSize sz) reflect_to_self(this->bmWidth = sz.cx, this->bmHeight = sz.cy);
-		/* R */ inline LSize Size() const reflect_as({ this->bmWidth, this->bmHeight });
-	public: // Property - WidthBytes
-		/* W */ inline auto &WidthBytes(LONG bmWidthBytes) reflect_to_self(this->bmWidthBytes = bmWidthBytes);
-		/* R */ inline LONG  WidthBytes() const reflect_as(this->bmWidthBytes);
-	public: // Property - Planes
-		/* W */ inline auto &Planes(WORD bmPlanes) reflect_to_self(this->bmPlanes = bmPlanes);
-		/* R */ inline WORD  Planes() const reflect_as(this->bmPlanes);
-	public: // Property - BitsPerPixel
-		/* W */ inline auto &BitsPerPixel(WORD bmBitsPixel) reflect_to_self(this->bmBitsPixel = bmBitsPixel);
-		/* R */ inline WORD  BitsPerPixel() const reflect_as(this->bmBitsPixel);
-	public: // Property - Colors
-		/* W */ inline auto &Colors(LPVOID bmBits) reflect_to_self(this->bmBits = bmBits);
-		/* R */ inline LPVOID Colors() const reflect_as(this->bmBits);
-	public:
-		inline HBITMAP Create() const assert_reflect_as(auto h = CreateBitmapIndirect(this), h);
-		inline operator HBITMAP() const reflect_as(Create());
-		inline BITMAP *operator&() reflect_as(this);
-		inline const BITMAP *operator&() const reflect_as(this);
-	};
+	using super::operator=;
+
+	inline Logic Log() const reflect_to(Logic log, GetObject(self, sizeof(log), reinterpret_cast<LPSTR>(&log)), log);
+
 	class CreateStruct {
 		int nWidth, nHeight;
 		UINT nPlanes = 1, nBitsPerPixel = 32;
@@ -181,24 +195,14 @@ public:
 		inline Bitmap Create() const assert_reflect_as(auto h = CreateBitmap(nWidth, nHeight, nPlanes, nBitsPerPixel, lpBits), h);
 		inline operator Bitmap() const reflect_as(Create());
 	};
-
-	Bitmap() {}
-	Bitmap(Null) {}
-	Bitmap(Bitmap &bmp) : super(bmp) {}
-	Bitmap(Bitmap &&bmp) : super(bmp) {}
-	Bitmap(const Bitmap &) = delete;
-	~Bitmap() reflect_to(Destroy());
-
-	using super::operator=;
-
-	inline Logic Log() const reflect_to(Logic log, GetObject(self, sizeof(log), reinterpret_cast<LPSTR>(&log)), log);
-
-	inline bool Destroy() reflect_as(super::Delete());
+	inline static CreateStruct Create(LSize s = 0) reflect_as(s);
 
 	inline static Bitmap Create(const BITMAPINFO *pbi, void **ppbits, HANDLE hSection = O, DWORD offset = 0) assert_reflect_as(auto h = CreateDIBSection(O, pbi, DIB_RGB_COLORS, ppbits, hSection, offset), h);
 	inline static Bitmap Create(const BITMAPINFO *pbi, HANDLE hSection = O, DWORD offset = 0) assert_reflect_as(auto h = CreateDIBSection(O, pbi, DIB_RGB_COLORS, O, hSection, offset), h);
-	inline static CreateStruct Create(LSize s = 0) reflect_as(s);
+
 	inline static Bitmap From(HDC hDC, LSize s) reflect_as(CreateCompatibleBitmap(hDC, s.cx, s.cy));
+
+	inline bool Destroy() reflect_as(super::Delete());
 
 	inline auto &Restretch(LSize sz) assert_reflect_as_self((super::hobj = (HBITMAP)CopyImage(self, IMAGE_BITMAP, sz.cx, sz.cy, LR_DEFAULTSIZE)));
 	inline Bitmap StretchNew(LSize sz) const assert_reflect_as(auto h = (HBITMAP)CopyImage(self, IMAGE_BITMAP, sz.cx, sz.cy, LR_DEFAULTCOLOR), h);
@@ -225,17 +229,18 @@ using CBitmap = RefAs<Bitmap>;
 #pragma region Pen
 struct Pen;
 using CPen = RefAs<Pen>;
-struct GDI_Based(Pen, HPEN) {
-	friend union RefAs<Pen>;
-	Pen(HPEN hPen) : super(hPen) {}
+struct BaseOf_GDI(Pen, HPEN) {
 public:
 	using super = GObjectBase<Pen, HPEN>;
-
+protected:
+	friend union RefAs<Pen>;
+	Pen(HPEN h) : super(h) {}
+	Pen(const Pen &p) : super(p) {}
+public:
 	Pen() {}
 	Pen(Null) {}
-	Pen(Pen &pen) : super(pen) {}
-	Pen(Pen &&pen) : super(pen) {}
-	Pen(const Pen &) = delete;
+	Pen(Pen &p) : super(p) {}
+	Pen(Pen &&p) : super(p) {}
 	
 	using super::operator=;
 
@@ -297,17 +302,18 @@ enum_class(HatchStyle, int,
 	DiagCross               = HS_DIAGCROSS      /* xxxxx */);
 struct Brush;
 using CBrush = RefAs<Brush>;
-struct GDI_Based(Brush, HBRUSH) {
-	friend union RefAs<Brush>;
-	Brush(HBRUSH hBrush) : super(hBrush) {}
+struct BaseOf_GDI(Brush, HBRUSH) {
 public:
 	using super = GObjectBase<Brush, HBRUSH>;
-
+protected:
+	friend union RefAs<Brush>;
+	Brush(HBRUSH h) : super(h) {}
+	Brush(const Brush &b) : super(b) {}
+public:
 	Brush() {}
 	Brush(Null) {}
-	Brush(Brush &bru) : super(bru) {}
-	Brush(Brush &&bru) : super(bru) {}
-	Brush(const Brush &) = delete;
+	Brush(Brush &b) : super(b) {}
+	Brush(Brush &&b) : super(b) {}
 	
 	using super::operator=;
 
@@ -354,14 +360,15 @@ public:
 };
 using PalEntry = PaletteEntry;
 using CPalette = RefAs<Palette>;
-class GDI_Based(Palette, HPALETTE) {
-protected:
-	friend union RefAs<Palette>;
-	Palette(HPALETTE hPal) : super(hPal) {}
+class BaseOf_GDI(Palette, HPALETTE) {
 public:
 	using Entry = PaletteEntry;
 	using super = GObjectBase<Palette, HPALETTE>;
-
+protected:
+	friend union RefAs<Palette>;
+	Palette(HPALETTE h) : super(h) {}
+	Palette(const Palette &p) :super(p) {}
+public:
 	Palette() {}
 	Palette(Null) {}
 	Palette(Palette &pal) : super(pal) {}
@@ -379,8 +386,7 @@ public:
 	Palette(std::initializer_list<COLORREF> entries) : Palette((const Entry *)entries.begin(), (UINT)entries.size()) {}
 	Palette(std::initializer_list<Entry> entries) : Palette(entries.begin(), (UINT)entries.size()) {}
 	Palette(const std::vector<Entry> &entries) : Palette(entries.data(), (UINT)entries.size()) {}
-	Palette(const Palette &) = delete;
-	
+
 	using super::operator=;
 
 	inline static CPalette Default() reflect_as((HPALETTE)::GetStockObject(DEFAULT_PALETTE));
@@ -390,6 +396,7 @@ public:
 
 	inline UINT NearestIndex(COLORREF cr) const reflect_as(GetNearestPaletteIndex(self, cr));
 
+#pragma region Properties
 public: // Property - Entries
 	/* W */ inline auto &Entries(std::vector<Entry> entries) {
 		auto count = std::min((size_t)Count(), entries.size());
@@ -410,7 +417,8 @@ public: // Property - NumEntries
 	/* R */ inline WORD  Count() const assert_reflect_to(WORD w = 0, GetObject(self, sizeof(WORD), &w), w);
 public: // Property - Size
 	/* R */ inline size_t Size() const reflect_as(Count() * sizeof(Entry));
-public:
+#pragma endregion
+
 	inline Entry operator[](size_t ind) const reflect_to(Entry entry; GetEntries((UINT)ind, (Entry *)&entry), entry);
 };
 using CPalette = RefAs<Palette>;
@@ -451,22 +459,21 @@ enum_class(Stretches, int,
 	Half = HALFTONE);
 class DeviceCap;
 using CDC = RefAs<DeviceCap>;
-class GDI_Based(DeviceCap, HDC) {
-protected:
-	friend union RefAs<DeviceCap>;
-	DeviceCap(HDC hdc) : super(hdc) {}
+class BaseOf_GDI(DeviceCap, HDC) {
 public:
 	using super = GObjectBase<DeviceCap, HDC>;
-
+protected:
+	friend union RefAs<DeviceCap>;
+	DeviceCap(HDC h) : super(h) {}
+	DeviceCap(const DeviceCap &d) : super(d) {}
+public:
 	DeviceCap() {}
 	DeviceCap(Null) {}
 	DeviceCap(DeviceCap &dc) : super(dc) {}
 	DeviceCap(DeviceCap &&dc) : super(dc) {}
-	DeviceCap(const DeviceCap &) = delete;
 
 	using super::operator=;
 
-#pragma region Methods
 	inline static DeviceCap CreateCompatible(HDC hdc = O) assert_reflect_as(auto hobj = CreateCompatibleDC(hdc), hobj);
 
 	inline bool Delete() {
@@ -487,12 +494,17 @@ public:
 	inline CGObject Select(HGDIOBJ ho) assert_reflect_as((ho = SelectObject(self, ho)) != HGDI_ERROR, ho);
 	inline CPalette Palette(HPALETTE hPal, bool bForceBkgd = false) check_reflect_to(hPal = SelectPalette(self, hPal, bForceBkgd), hPal);
 
-	inline auto&operator()(HGDIOBJ ho) reflect_to_self(Select(ho));
-	inline auto&operator()(Bitmap &ho) reflect_to_self(Select(ho));
-	inline auto&operator()(const Pen &ho) reflect_to_self(Select(ho));
-	inline auto&operator()(const Brush &ho) reflect_to_self(Select(ho));
-	inline auto&operator()(const WX::Palette hPal, bool bForceBkgd = false) reflect_to_self(Palette(hPal, bForceBkgd));
-#pragma endregion
+	inline auto&DrawIcon(HICON hIcon, LPoint p = 0) assert_reflect_as_self(::DrawIcon(self, p.x, p.y, hIcon));
+//	inline bool DrawText(String text, Rect r = 0) reflect_as(DrawText(self, text.c_str(), text.size(), r, ));
+	inline auto&DrawPixel(COLORREF rgb, LPoint p) assert_reflect_as_self(SetPixel(self, p.x, p.y, rgb) != -1);
+	template<size_t len>
+	inline auto&DrawPolyline(const LPoint(&pts)[len]) assert_reflect_as_self(Polyline(self, pts, len));
+	inline auto&DrawPie(LRect rc, LPoint start, LPoint end) assert_reflect_as_self(Pie(self, rc.left, rc.top, rc.right, rc.bottom, start.x, start.y, end.x, end.y));
+	inline auto&DrawEllipse(LRect rc) assert_reflect_as_self(Ellipse(self, rc.left, rc.top, rc.right, rc.bottom));
+	inline auto&DrawFocus(LRect rc) assert_reflect_as_self(DrawFocusRect(self, rc));
+	inline auto&Invert(LRect rc) assert_reflect_as_self(InvertRect(self, rc));
+	inline auto&Fill(LRect rc, HBRUSH hbr) assert_reflect_as_self(FillRect(self, rc, hbr));
+	inline auto&Fill(HBRUSH hbr) reflect_as(Fill(Size(), hbr));
 
 #pragma region Properties
 public: // Property - PenColor
@@ -521,45 +533,101 @@ public: // Property - Size
 public: // Property - PaletteRealize
 	/* R */ inline UINT PaletteRealize() const reflect_as(RealizePalette(self));
 public: // Property - StretchMode
-	/* W */ inline auto &StretchMode(Stretches mode) assert_reflect_as_self(SetStretchBltMode(self, mode.yield()));
+	/* W */ inline auto     &StretchMode(Stretches mode) assert_reflect_as_self(SetStretchBltMode(self, mode.yield()));
 	/* R */ inline Stretches StretchMode() const assert_reflect_as(auto mode = GetStretchBltMode(self), force_cast<Stretches>(mode));
 #pragma endregion
 
-#pragma region Draw
-	inline auto&DrawIcon(HICON hIcon, LPoint p = 0) assert_reflect_as_self(::DrawIcon(self, p.x, p.y, hIcon));
-//	inline bool DrawText(String text, Rect r = 0) reflect_as(DrawText(self, text.c_str(), text.size(), r, ));
-	inline auto&DrawPixel(COLORREF rgb, LPoint p) assert_reflect_as_self(SetPixel(self, p.x, p.y, rgb) != -1);
-	template<size_t len>
-	inline auto&DrawPolyline(const LPoint(&pts)[len]) assert_reflect_as_self(Polyline(self, pts, len));
-	inline auto&DrawPie(LRect rc, LPoint start, LPoint end) assert_reflect_as_self(Pie(self, rc.left, rc.top, rc.right, rc.bottom, start.x, start.y, end.x, end.y));
-	inline auto&DrawEllipse(LRect rc) assert_reflect_as_self(Ellipse(self, rc.left, rc.top, rc.right, rc.bottom));
-	inline auto&DrawFocus(LRect rc) assert_reflect_as_self(DrawFocusRect(self, rc));
-	inline auto&Invert(LRect rc) assert_reflect_as_self(InvertRect(self, rc));
-	inline auto&Fill(LRect rc, HBRUSH hbr) assert_reflect_as_self(FillRect(self, rc, hbr));
-	inline auto&Fill(HBRUSH hbr) reflect_as(Fill(Size(), hbr));
-#pragma endregion
+	inline auto&operator()(HGDIOBJ ho) reflect_to_self(Select(ho));
+	inline auto&operator()(Bitmap &ho) reflect_to_self(Select(ho));
+	inline auto&operator()(const Pen &ho) reflect_to_self(Select(ho));
+	inline auto&operator()(const Brush &ho) reflect_to_self(Select(ho));
+	inline auto&operator()(const WX::Palette hPal, bool bForceBkgd = false) reflect_to_self(Palette(hPal, bForceBkgd));
 };
 using DC = DeviceCap;
 #pragma endregion
 
-#pragma endregion 
+#pragma endregion
 
 #pragma region Icon & Cursor
 
 #pragma region Icon
+struct IconInfo : protected ICONINFO {
+public:
+	IconInfo(bool fIcon = true) : ICONINFO{ 0 } reflect_to(this->fIcon = fIcon);
+	IconInfo(const IconInfo &i) : ICONINFO{ i } {}
+	IconInfo(const ICONINFO &i) : ICONINFO{ i } {}
+	~IconInfo() {
+		if (hbmMask) Bitmap::Attach(hbmMask).Delete();
+		if (hbmColor) Bitmap::Attach(hbmColor).Delete();
+	}
+public: // Property - Hotspot
+	/* W */ inline auto &Hotspot(LPoint s) reflect_to_self(this->xHotspot = s.x, this->yHotspot = s.y);
+	/* R */ inline LPoint Hotspot() const reflect_as({ (long)this->xHotspot, (long)this->yHotspot });
+public: // Property - Masks
+	/* W */ inline auto &Mask(HBITMAP hbmMask) reflect_to_self(this->hbmMask = hbmMask);
+	/* R */ inline Bitmap &Mask() const reflect_as(Bitmap::Attach(const_cast<HBITMAP &>(this->hbmMask)));
+public: // Property - Colors
+	/* W */ inline auto &Colors(HBITMAP hbmColor) reflect_to_self(this->hbmColor = hbmColor);
+	/* R */ inline Bitmap &Colors() const reflect_as(Bitmap::Attach(const_cast<HBITMAP &>(this->hbmColor)));
+public:
+	inline PICONINFO operator&() reflect_as(this);
+	inline const ICONINFO *operator&() const reflect_as(this);
+};
+struct IconInfoEx : protected ICONINFOEX {
+public:
+	IconInfoEx() : ICONINFOEX{ 0 } reflect_to(this->cbSize = sizeof(*this); fIcon = true);
+	IconInfoEx(const IconInfoEx &i) : ICONINFOEX{ i } {}
+	IconInfoEx(const ICONINFOEX &i) : ICONINFOEX{ i } {}
+	~IconInfoEx() {
+		if (hbmMask) Bitmap::Attach(hbmMask).Delete();
+		if (hbmColor) Bitmap::Attach(hbmColor).Delete();
+	}
+public: // Property - Hotspot
+	/* W */ inline auto &Hotspot(LSize s) reflect_to_self(this->xHotspot = s.cx, this->yHotspot = s.cy);
+	/* R */ inline LSize Hotspot() const reflect_as({ (long)this->xHotspot, (long)this->yHotspot });
+public: // Property - Masks
+	/* W */ inline auto   &Masks(HBITMAP hbmMask) reflect_to_self(this->hbmMask = hbmMask);
+	/* R */ inline Bitmap &Masks() const reflect_as(Bitmap::Attach(const_cast<HBITMAP &>(this->hbmMask)));
+public: // Property - Colors
+	/* W */ inline auto   &Colors(HBITMAP hbmColor) reflect_to_self(this->hbmColor = hbmColor);
+	/* R */ inline Bitmap &Colors() const reflect_as(Bitmap::Attach(const_cast<HBITMAP &>(this->hbmColor)));
+public: // Property - ResourceID
+	/* W */ inline auto &ResourceID(WORD wResID) reflect_to_self(this->wResID = wResID);
+	/* R */ inline WORD  ResourceID() const reflect_as(this->wResID);
+public: // Property - ModuleName
+	//	WCHAR   szModName[MAX_PATH];
+	/* R */ inline const String ModuleName() const reflect_as(CString(this->szModName, CountOf(this->szModName)));
+public: // Property - ResourceName
+	//	WCHAR   szResName[MAX_PATH];
+	/* R */ inline const String ResourceName() const reflect_as(CString(this->szResName, CountOf(this->szResName)));
+public:
+	inline PICONINFOEX operator&() reflect_as(this);
+	inline const ICONINFOEX *operator&() const reflect_as(this);
+};
 class Icon {
+public:
+	using Info = IconInfo;
+	using InfoEx = IconInfoEx;
 protected:
 	friend union RefAs<Icon>;
-	HICON hIcon = O;
-	Icon(HICON hIcon) : hIcon(hIcon) {}
+	mutable HICON hIcon = O;
+	Icon(HICON h) : hIcon(h) {}
+	Icon(const Icon &i) : hIcon(i.hIcon) reflect_to(i.hIcon = O);
 public:
-	class Logic {
+	Icon() {}
+	Icon(Null) {}
+	Icon(Icon &i) : hIcon(i.hIcon) reflect_to(i.hIcon = O);
+	Icon(Icon &&i) : hIcon(i.hIcon) reflect_to(i.hIcon = O);
+	~Icon() reflect_to(Destroy());
+
+	class CreateStruct {
 		HINSTANCE hInstance = GetModuleHandle(O);
 		int nWidth, nHeight;
 		BYTE nPlanes = 1, nBitsPerPixel = 32;
 		LPCBYTE lpANDbits = O, lpXORbits = O;
 	public:
-		Logic(LSize s = 0) : nWidth(s.cx), nHeight(s.cy) {}
+		CreateStruct(LPCBYTE lpANDbits, LPCBYTE lpXORbits) :
+			lpANDbits(lpANDbits), lpXORbits(lpXORbits) {}
 	public: // Property - Module
 		/* W */ inline auto &Module(HINSTANCE hInstance) reflect_to_self(this->hInstance = hInstance);
 //		/* R */ inline WX::Module Module() reflect_as(this->hInstance);
@@ -579,82 +647,16 @@ public:
 		/* W */ inline auto &BitsPerPixel(UINT nBitsPerPixel) reflect_to_self(this->nBitsPerPixel = nBitsPerPixel);
 		/* R */ inline UINT  BitsPerPixel() const reflect_as(this->nBitsPerPixel);
 	public: // Property - Masks
-		/* W */ inline auto   &Masks(LPCVOID lpBits) reflect_to_self(this->lpANDbits = (LPCBYTE)lpBits);
-		/* R */ inline LPCBYTE Masks() const reflect_as(this->lpANDbits);
+		/* W */ inline auto   &Mask(LPCVOID lpBits) reflect_to_self(this->lpANDbits = (LPCBYTE)lpBits);
+		/* R */ inline LPCBYTE Mask() const reflect_as(this->lpANDbits);
 	public: // Property - Colors
 		/* W */ inline auto   &Colors(LPCVOID lpBits) reflect_to_self(this->lpXORbits = (LPCBYTE)lpBits);
 		/* R */ inline LPCBYTE Colors() const reflect_as(this->lpXORbits);
 	public:
 		inline Icon Create() const assert_reflect_as(auto h = CreateIcon(hInstance, nWidth, nHeight, nPlanes, nBitsPerPixel, lpANDbits, lpXORbits), h);
 	};
-	struct CreateStruct : protected ICONINFO {
-	public:
-		CreateStruct(bool fIcon = true) : ICONINFO{ 0 } reflect_to(this->fIcon = fIcon);
-		CreateStruct(const ICONINFO &i) : ICONINFO{ i } {}
-		CreateStruct(const CreateStruct &) = delete;
-	public: // Property - Hotspot
-		/* W */ inline auto &Hotspot(LPoint s) reflect_to_self(this->xHotspot = s.x, this->yHotspot = s.y);
-		/* R */ inline LPoint Hotspot() const reflect_as({ (long)this->xHotspot, (long)this->yHotspot });
-	public: // Property - Masks
-		/* W */ inline auto &Masks(HBITMAP hbmMask) reflect_to_self(this->hbmMask = hbmMask);
-		/* R */ inline Bitmap &Masks() const reflect_as(Bitmap::Attach(const_cast<HBITMAP &>(this->hbmMask)));
-	public: // Property - Colors
-		/* W */ inline auto &Colors(HBITMAP hbmColor) reflect_to_self(this->hbmColor = hbmColor);
-		/* R */ inline Bitmap &Colors() const reflect_as(Bitmap::Attach(const_cast<HBITMAP &>(this->hbmColor)));
-	public:
-		inline PICONINFO operator&() reflect_as(this);
-		inline const ICONINFO *operator&() const reflect_as(this);
-		inline Icon Create() const reflect_to(auto h = CreateIconIndirect(force_cast<PICONINFO>(this)), h);
-		inline operator Icon() const reflect_as(Create());
-	};
-	class Information : public CreateStruct {
-	public:
-		Information() {}
-		Information(const ICONINFO &i) : CreateStruct(i) {}
-		~Information() {
-			if (hbmMask) Bitmap::Attach(hbmMask).Delete();
-			if (hbmColor) Bitmap::Attach(hbmColor).Delete();
-		}
-	};
-	using Info = Information;
-
-	struct InformationEx : protected ICONINFOEX {
-	public:
-		InformationEx() : ICONINFOEX{ 0 } reflect_to(this->cbSize = sizeof(*this); fIcon = true);
-		InformationEx(const ICONINFOEX &i) : ICONINFOEX{ i } {}
-		InformationEx(const InformationEx &) = delete;
-		~InformationEx() {
-			if (hbmMask) Bitmap::Attach(hbmMask).Delete();
-			if (hbmColor) Bitmap::Attach(hbmColor).Delete();
-		}
-	public: // Property - Hotspot
-		/* W */ inline auto &Hotspot(LSize s) reflect_to_self(this->xHotspot = s.cx, this->yHotspot = s.cy);
-		/* R */ inline LSize Hotspot() const reflect_as({ (long)this->xHotspot, (long)this->yHotspot });
-	public: // Property - Masks
-		/* W */ inline auto &Masks(HBITMAP hbmMask) reflect_to_self(this->hbmMask = hbmMask);
-		/* R */ inline Bitmap &Masks() const reflect_as(Bitmap::Attach(const_cast<HBITMAP &>(this->hbmMask)));
-	public: // Property - Colors
-		/* W */ inline auto &Colors(HBITMAP hbmColor) reflect_to_self(this->hbmColor = hbmColor);
-		/* R */ inline Bitmap &Colors() const reflect_as(Bitmap::Attach(const_cast<HBITMAP &>(this->hbmColor)));
-	public: // Property - ResourceID
-		/* W */ inline auto &ResourceID(WORD wResID) reflect_to_self(this->wResID = wResID);
-		/* R */ inline WORD  ResourceID() const reflect_as(this->wResID);
-	//public: // Property - ModuleName
-	//	WCHAR   szModName[MAX_PATH];
-	//public: // Property - ResourceName
-	//	WCHAR   szResName[MAX_PATH];
-	public:
-		inline PICONINFOEX operator&() reflect_as(this);
-		inline const ICONINFOEX *operator&() const reflect_as(this);
-	};
-	using InfoEx = InformationEx;
-
-	Icon() {}
-	Icon(Null) {}
-	Icon(Icon &ico) : hIcon(ico.hIcon) reflect_to(ico.hIcon = O);
-	Icon(Icon &&ico) : hIcon(ico.hIcon) reflect_to(ico.hIcon = O);
-	Icon(const Icon &) = delete;
-	~Icon() reflect_to(Destroy());
+	inline static CreateStruct Create(LPCBYTE lpANDbits, LPCBYTE lpXORbits = O) reflect_as({ lpANDbits, lpXORbits });
+	inline static Icon Create(HBITMAP hbmColor, HBITMAP hbmMask = O) assert_reflect_as(auto h = CreateIconIndirect(&IconInfo().Colors(hbmColor).Mask(hbmMask)), h);
 
 	inline bool Destroy() {
 		if (hIcon)
@@ -663,76 +665,66 @@ public:
 		hIcon = O;
 		return true;
 	}
-	inline static CreateStruct Create() reflect_as(true);
-	inline Icon operator+() const assert_reflect_as(HICON h = CopyIcon(hIcon), h);
 
 #pragma region Properties
-public: // Property - Informations
-	/* R */ inline Information Informations() const assert_reflect_to(ICONINFO i, GetIconInfo(hIcon, &i), i);
-public: // Property - InformationsEx
-	/* R */ inline InformationEx InformationsEx() const assert_reflect_to(ICONINFOEX i, GetIconInfoEx(hIcon, &i), i);
+public: // Property - Info
+	/* R */ inline Info Informations() const assert_reflect_to(ICONINFO i, GetIconInfo(hIcon, &i), i);
+public: // Property - InfoEx
+	/* R */ inline InfoEx InformationsEx() const assert_reflect_to(ICONINFOEX i, GetIconInfoEx(hIcon, &i), i);
 public: // Property - Masks
-	/* R */ inline Bitmap Masks() const reflect_as(Informations().Masks());
+	/* R */ inline Bitmap Mask() const reflect_as(Informations().Mask());
 public: // Property - Colors
 	/* R */ inline Bitmap Colors() const reflect_as(Informations().Colors());
 #pragma endregion
 
 	inline operator HICON() const reflect_as(hIcon);
 
+	inline Icon operator+() const assert_reflect_as(auto h = CopyIcon(hIcon), h);
+
+	inline auto &operator=(Icon &i) reflect_to_self(std::swap(hIcon, i.hIcon));
+	inline auto &operator=(Icon &&i) reflect_to_self(std::swap(hIcon, i.hIcon));
+	inline auto &operator=(const Icon &i) const reflect_to_self(std::swap(hIcon, i.hIcon));
+
 	inline static Icon &Attach(HICON &hIcon) reflect_as(reuse_as<Icon>(hIcon));
 	inline static const Icon &Attach(const HICON &hIcon) reflect_as(reuse_as<const Icon>(hIcon));
 };
-using IconLogic = Icon::Logic;
-using IconInfo = Icon::Info;
-using IconInfoEx = Icon::InfoEx;
 using CIcon = RefAs<Icon>;
 #pragma endregion
 
 #pragma region Cursor
 class Cursor : public Icon {
-protected:
-	friend union RefAs<Cursor>;
-	Cursor(HCURSOR hCursor) : super((HICON)hCursor) {}
 public:
 	using super = Icon;
-	class Logic {
+protected:
+	friend union RefAs<Cursor>;
+	Cursor(HCURSOR h) : super((HICON)h) {}
+	Cursor(const Cursor &c) : Icon(c) {}
+public:
+	Cursor() {}
+	Cursor(Null) {}
+	Cursor(Cursor &i) : super(i) {}
+	Cursor(Cursor &&i) : super(i) {}
+	~Cursor() reflect_to(Destroy());
+
+	class CreateStruct {
 		HINSTANCE hInstance = GetModuleHandle(O);
 		int nWidth = 0, nHeight = 0, xHotspot = 0, yHotspot = 0;
-		LPCBYTE lpANDbits = O, lpXORbits = O;
+		LPCBYTE lpANDbits, lpXORbits;
 	public:
-		Logic(LSize s = 0) : nWidth(s.cx), nHeight(s.cy) {}
-	public: // Property - Module
-		/* W */ inline auto &Module(HINSTANCE hInstance) reflect_to_self(this->hInstance = hInstance);
-		///* R */ inline WX::Module Module() reflect_as(this->hInstance);
-	public: // Property - Hotspot
-		/* W */ inline auto &Hotspot(LSize s) reflect_to_self(this->xHotspot = s.cx, this->yHotspot = s.cy);
-		/* R */ inline LSize Hotspot() const reflect_as({ this->xHotspot, this->yHotspot });
-	public: // Property - Width
-		/* W */ inline auto &Width(LONG nWidth) reflect_to_self(this->nWidth = nWidth);
-		/* R */ inline LONG  Width() const reflect_as(this->nWidth);
-	public: // Property - Height
-		/* W */ inline auto &Height(LONG nHeight) reflect_to_self(this->nHeight = nHeight);
-		/* R */ inline LONG  Height() const reflect_as(this->nHeight);
-	public: // Property - Size
-		/* W */ inline auto &Size(LSize sz) reflect_to_self(this->nWidth = sz.cx, this->nHeight = sz.cy);
-		/* R */ inline LSize Size() const reflect_as({ this->nWidth, this->nHeight });
-	public: // Property - Masks
-		/* W */ inline auto &Masks(LPCVOID lpBits) reflect_to_self(this->lpANDbits = (LPCBYTE)lpBits);
-		/* R */ inline LPCBYTE Masks() const reflect_as(this->lpANDbits);
-	public: // Property - Colors
-		/* W */ inline auto &Colors(LPCVOID lpBits) reflect_to_self(this->lpXORbits = (LPCBYTE)lpBits);
-		/* R */ inline LPCBYTE Colors() const reflect_as(this->lpXORbits);
+		CreateStruct(LPCBYTE lpANDbits, LPCBYTE lpXORbits, LPoint Hotspot) :
+			xHotspot(Hotspot.x), yHotspot(Hotspot.y), lpANDbits(lpANDbits), lpXORbits(lpXORbits) {}
+	public:
+		inline auto &Module(HINSTANCE hInstance) reflect_to_self(this->hInstance = hInstance);
+		inline auto &Hotspot(LSize s) reflect_to_self(this->xHotspot = s.cx, this->yHotspot = s.cy);
+		inline auto &Width(LONG nWidth) reflect_to_self(this->nWidth = nWidth);
+		inline auto &Height(LONG nHeight) reflect_to_self(this->nHeight = nHeight);
+		inline auto &Size(LSize sz) reflect_to_self(this->nWidth = sz.cx, this->nHeight = sz.cy);
 	public:
 		inline Cursor Create() const assert_reflect_as(auto h = CreateCursor(hInstance, xHotspot, yHotspot, nWidth, nHeight, lpANDbits, lpXORbits), h);
 		inline operator Cursor() const reflect_as(Create());
 	};
-
-	Cursor() {}
-	Cursor(Null) {}
-	Cursor(Cursor &ico) : super(ico) {}
-	Cursor(Cursor &&ico) : super(ico) {}
-	Cursor(const Cursor &) = delete;
-	~Cursor() reflect_to(Destroy());
+	inline static CreateStruct Create(LPCBYTE lpANDbits, LPCBYTE lpXORbits = O, LPoint Hotspot = 0) reflect_as({ lpANDbits, lpXORbits, Hotspot });
+	inline static Cursor Create(HBITMAP hbmColor, HBITMAP hbmMask = O, LPoint Hotspot = 0) assert_reflect_as(auto h = CreateIconIndirect(&IconInfo(true).Colors(hbmColor).Mask(hbmMask)), h);
 
 	inline bool Destroy() {
 		if (super::hIcon)
@@ -741,8 +733,6 @@ public:
 		super::hIcon = O;
 		return true;
 	}
-	inline static CreateStruct Create() reflect_as(true);
-	inline Cursor operator+() const assert_reflect_as(HCURSOR h = CopyCursor(super::hIcon), h);
 
 #pragma region Properties
 public: // Property - Hotspot
@@ -751,12 +741,15 @@ public: // Property - Hotspot
 
 	inline operator HCURSOR() const reflect_as((HCURSOR)super::hIcon);
 
+	inline Cursor operator+() const assert_reflect_as(auto h = CopyCursor(super::hIcon), h);
+
+	inline auto &operator=(Cursor &i) reflect_to_self(std::swap(hIcon, i.hIcon));
+	inline auto &operator=(Cursor &&i) reflect_to_self(std::swap(hIcon, i.hIcon));
+	inline auto &operator=(const Cursor &i) const reflect_to_self(std::swap(hIcon, i.hIcon));
+
 	inline static Cursor &Attach(HCURSOR &hCursor) reflect_as(reuse_as<Cursor>(hCursor));
 	inline static const Cursor &Attach(const HCURSOR &hCursor) reflect_as(reuse_as<const Cursor>(hCursor));
 };
-using CursorLogic = Cursor::Logic;
-using CursorInfo = Cursor::Info;
-using CursorInfoEx = Cursor::InfoEx;
 using CCursor = RefAs<Cursor>;
 #pragma endregion
 
@@ -810,19 +803,13 @@ class MenuItem {
 	UINT uID, flags;
 	MenuItem(HMENU hMenu, UINT uID, UINT flags) :
 		hMenu(hMenu), uID(uID), flags(flags) {}
-
 	using Type = MenuItemType;
 	using State = MenuItemState;
-
-#pragma region Methods
 public:
 	inline void Delete(UINT uID) assert(DeleteMenu(hMenu, uID, flags) || (flags = 0));
 	inline void Remove(UINT uID) assert(RemoveMenu(hMenu, uID, flags) || (flags = 0));
 	inline auto&Hilite(HWND hWnd, bool bHilite = true) assert_reflect_as_self(HiliteMenuItem(hWnd, hMenu, uID, flags | (bHilite ? MF_HILITE : MF_UNHILITE)));
 	CMenu Sub(int nPos);
-#pragma endregion
-
-#pragma region Properties
 public: // Property - Enable
 	/* W */ inline auto &Enable(bool bEnable) assert_reflect_as_self(EnableMenuItem(hMenu, uID, flags | (bEnable ? MF_ENABLED : MF_DISABLED)) >= 0);
 public: // Property - Check
@@ -867,23 +854,22 @@ public: // Property - String
 		assert(GetMenuItemInfo(hMenu, uID, flags, &mii));
 		return data;
 	}
-#pragma endregion
 };
 class Menu {
+public:
+	using Item = MenuItem;
+	using Style = MenuStyle;
 protected:
-	HMENU hMenu = O;
 	friend union RefAs<Menu>;
-	Menu(HMENU hMenu) : hMenu(hMenu) {}
+	mutable HMENU hMenu = O;
+	Menu(HMENU h) : hMenu(h) {}
+	Menu(const Menu &m) : hMenu(m.hMenu) reflect_to(m.hMenu = O);
 public:
 	Menu() {}
 	Menu(Null) {}
 	Menu(Menu &m) : hMenu(m) reflect_to(m.hMenu = O);
 	Menu(Menu &&m) : hMenu(m) reflect_to(m.hMenu = O);
-	Menu(const Menu &) = delete;
 	~Menu() reflect_to(Destroy());
-
-	using Item = MenuItem;
-	using Style = MenuStyle;
 
 #pragma region Methods
 	inline static Menu Create()      assert_reflect_as(auto h = CreateMenu(), h);
@@ -965,6 +951,9 @@ public:
 	inline operator HMENU() const reflect_as(hMenu);
 	inline operator LPARAM() const reflect_as((LPARAM)hMenu);
 
+	inline auto &operator=(Menu &m) reflect_to_self(std::swap(hMenu, m.hMenu));
+	inline auto &operator=(const Menu &m) const reflect_to_self(std::swap(hMenu, m.hMenu));
+
 	inline static Menu &Attach(HMENU &hMenu) reflect_as(reuse_as<Menu>(hMenu));
 	inline static const Menu &Attach(const HMENU &hMenu) reflect_as(reuse_as<const Menu>(hMenu));
 };
@@ -976,21 +965,20 @@ inline CMenu MenuItem::Sub(int nPos) reflect_as({ GetSubMenu(hMenu, nPos) });
 #pragma region Module
 class Module {
 protected:
-	HINSTANCE hInst = O;
 	friend union RefAs<Module>;
-	Module(HINSTANCE hModule) : hInst(hModule) {}
+	mutable HINSTANCE hInst = O;
+	Module(HINSTANCE h) : hInst(h) {}
+	Module(const Module &m) : hInst(m.hInst) reflect_to(m.hInst = O);
 public:
-	Module(LPCTSTR lpModuleName = O) : hInst(GetModuleHandle(lpModuleName)) {}
 	Module(Null) {}
 	Module(Module &m) : hInst(m) reflect_to(m.hInst = O);
 	Module(Module &&m) : hInst(m) reflect_to(m.hInst = O);
-	Module(const Module &) = delete;
+	Module(LPCTSTR lpModuleName = O) : hInst(GetModuleHandle(lpModuleName)) {}
 	~Module() reflect_to(Free());
 
 	inline static Module Handle(LPCTSTR lpModuleName) reflect_as(GetModuleHandle(lpModuleName));
-	inline static Module Library(LPCTSTR lpLibFileName) reflect_as(LoadLibrary(lpLibFileName));
+	inline static Module Library(LPCTSTR lpLibFileName) assert_reflect_as(auto hInst = LoadLibrary(lpLibFileName), hInst);
 
-	inline auto&Load(LPCTSTR lpLibFileName) assert_reflect_as_self((hInst = LoadLibrary(lpLibFileName)));
 	inline bool Free() {
 		if (hInst)
 			if (!::FreeLibrary(hInst))
@@ -1025,6 +1013,10 @@ public:
 	inline operator bool() const reflect_as(hInst ? hInst != INVALID_HANDLE_VALUE : false);
 	inline operator HINSTANCE() const reflect_as(hInst);
 	inline operator LPARAM() const reflect_as((LPARAM)hInst);
+
+	inline auto &operator=(Module &m) reflect_to_self(std::swap(hInst, m.hInst));
+	inline auto &operator=(Module &&m) reflect_to_self(std::swap(hInst, m.hInst));
+	inline auto &operator=(const Module &m) const reflect_to_self(std::swap(hInst, m.hInst));
 
 	inline static Module &Attach(HINSTANCE &hInst) reflect_as(reuse_as<Module>(hInst));
 	inline static const Module &Attach(const HINSTANCE &hInst) reflect_as(reuse_as<const Module>(hInst));
@@ -1117,16 +1109,25 @@ public: // Properties - Quality
 public: // Properties - PitchAndFamily
 	/* W */ inline auto&PitchAndFamily(BYTE lfPitchAndFamily) reflect_to_self(this->lfPitchAndFamily = lfPitchAndFamily);
 	/* R */ inline BYTE PitchAndFamily() const reflect_as(this->lfPitchAndFamily);
-public: // Properties - FaceName //////////////////////////////////////////
+public: // Properties - FaceName
 	/* W */ inline auto &FaceName(String name) assert_reflect_as_self(SUCCEEDED(StringCchCopy(this->lfFaceName, name.Length() + 1, name)));
 	/* R */ inline const String FaceName() const reflect_as(CString(this->lfFaceName, LF_FACESIZE));
 public:
 	inline LPLOGFONT operator&() reflect_as(this);
 	inline const LOGFONT *operator&() const reflect_as(this);
 };
-struct GDI_Based(Font, HFONT) {
-
+class BaseOf_GDI(Font, HFONT) {
+public:
+	using super = GObjectBase<Font, HFONT>;
 	using Logic = FontLogic;
+protected:
+	Font(const Font &f) : super(f) {}
+public:
+	Font() {}
+	Font(Font &f) : super(f) {}
+	Font(Font &&f) : super(f) {}
+
+	using super::operator=;
 
 	inline auto&Create(const Logic &LogFont) reflect_to_self(this->hobj = CreateFontIndirect(&LogFont));
 
@@ -1139,5 +1140,34 @@ struct GDI_Based(Font, HFONT) {
 //#define DEFAULT_GUI_FONT    17
 };
 #pragma endregion
+
+inline Bitmap ClipBitmap(const Bitmap &bmp, LRect rc) {
+	auto &&size = rc.size();
+	Bitmap nBmp = Bitmap::Create(size).BitsPerPixel(bmp.Log().BitsPerPixel());
+	DC srcDC = DC::CreateCompatible(), dstDC = DC::CreateCompatible();
+	srcDC.Select(nBmp);
+	dstDC.Select(bmp);
+	srcDC.BltBit(0, size, dstDC);
+	return nBmp;
+}
+
+inline void SaveToFile(DC &dc, const Palette &pal, const Bitmap &bmp, File &file) {
+	auto &&log = bmp.Log();
+	bool usePal = log.BitsPerPixel() < 24 && pal;
+	auto usage = usePal ? DIB_PAL_COLORS : DIB_RGB_COLORS;
+	auto palSize = usePal ? (DWORD)std::min(pal.Size(), (size_t)4 << log.BitsPerPixel()) : 0;
+	BitmapHeader header;
+	header.Size(log.Size());
+	header.Planes(log.Planes());
+	header.BitsPerPixel(log.BitsPerPixel());
+	assert(GetDIBits(dc, bmp, 0, log.Height(), O, header, usage));
+	header.PaletteSize(palSize);
+	header.ColorsSize(header.SizeImage());
+	assert(file.Write(&header, sizeof(header) - 4) == sizeof(header) - 4);
+	assert(file.Write(pal.Entries().data(), palSize) == palSize);
+	AutoPointer<Heap> hBits(header.SizeImage());
+	assert(GetDIBits(dc, bmp, 0, log.Height(), &hBits, header, usage));
+	assert(file.Write(&hBits, header.SizeImage()) == header.SizeImage());
+}
 
 }

@@ -22,7 +22,7 @@ public:
 	struct xClass : super::template ClassBase<xClass> {
 		xClass() {
 			this->lpszClassName = AnyChild::CtlClassName;
-			assert(this->GetInfo());
+			this->GetInfo();
 			this->lpszClassName = AnyChild::_ClassName;
 			DefProc = this->lpfnWndProc;
 			this->lpfnWndProc = AnyChild::template MainProc<GWLP_USERDATA>;
@@ -39,12 +39,12 @@ public:
 	inline auto Create(HWND hParent) {
 		super::Register();
 		using CreateX = XCreate<void, typename AnyChild::Style, typename AnyChild::StyleEx>;
-		return subtype_branchof_xCreate<AnyChild, CreateX>(self).Parent(hParent).Param(this);
+		return subtype_branchof_xCreate<AnyChild, CreateX>(self).Parent(hParent);
 	}
 };
 template<class AnyChild>
 WndProc CommCtl<AnyChild>::DefProc;
-#define CommCtl_Based(name) template<class AnyChild> name : public ChainExtend<name<AnyChild>, AnyChild>, public CommCtl<KChain<name<AnyChild>, AnyChild>>
+#define BaseOf_CommCtl(name) template<class AnyChild> name : public WX::ChainExtend<name<AnyChild>, AnyChild>, public CommCtl<KChain<name<AnyChild>, AnyChild>>
 #pragma endregion
 
 #pragma region Static
@@ -84,7 +84,7 @@ enum_flags(StaticStyle, WStyle,
 	PathEllipsis    = SS_PATHELLIPSIS,
 	WordEllipsis    = SS_WORDELLIPSIS,
 	EllipsisMask    = SS_ELLIPSISMASK);
-CommCtl_Based(class StaticCtl) {
+BaseOf_CommCtl(class StaticCtl) {
 public:
 	static constexpr auto CtlClassName = WC_STATIC;
 	using super = CommCtl<KChain<StaticCtl<AnyChild>, AnyChild>>;
@@ -186,7 +186,7 @@ public: // Property - Align
 	/* W */ inline auto   &Align(Aligns align) reflect_to_self(this->uAlign = align.yield());
 	/* R */ inline Aligns  Align() const reflect_as(reuse_as<Aligns>(this->uAlign));
 };
-CommCtl_Based(class ButtonCtl) {
+BaseOf_CommCtl(class ButtonCtl) {
 	def_memberof(wmailBox);
 public:
 	static constexpr auto CtlClassName = WC_BUTTON;
@@ -330,7 +330,7 @@ public: // Property - ThumbBottom
 public: // Property - 
 	//DWORD rgstate[CCHILDREN_SCROLLBAR + 1];
 };
-CommCtl_Based(class ScrollBarCtl) {
+BaseOf_CommCtl(class ScrollBarCtl) {
 public:
 	static constexpr auto CtlClassName = WC_SCROLLBAR;
 	using super = CommCtl<KChain<ScrollBarCtl<AnyChild>, AnyChild>>;
@@ -371,7 +371,7 @@ enum_flags(StatusBarTexts, uint16_t,
 	PopOut          = SBT_POPOUT,
 	RTLReading      = SBT_RTLREADING,
 	NoTabParsing    = SBT_NOTABPARSING);
-CommCtl_Based(class StatusBarCtl) {
+BaseOf_CommCtl(class StatusBarCtl) {
 public:
 	static constexpr LPCTSTR CtlClassName = STATUSCLASSNAME;
 	using super = CommCtl<KChain<StatusBarCtl<AnyChild>, AnyChild>>;
@@ -449,7 +449,7 @@ struct ToolTipInfo : protected TTTOOLINFO {
 	ToolTipInfo() : TTTOOLINFO{ 0 } { this->cbSize = sizeof(TTTOOLINFO); }
 };
 using ToolTip = ToolTipCtl<>;
-CommCtl_Based(class ToolTipCtl) {
+BaseOf_CommCtl(class ToolTipCtl) {
 public:
 	static constexpr auto CtlClassName = TOOLTIPS_CLASS;
 	using super = CommCtl<KChain<ToolTipCtl<AnyChild>, AnyChild>>;
@@ -611,7 +611,7 @@ enum_flags(ReBarStyle, WStyle,
 	AutoSize                  = RBS_AUTOSIZE,
 	VerticalGripper           = RBS_VERTICALGRIPPER,
 	DblClkToggle              = RBS_DBLCLKTOGGLE);
-CommCtl_Based(class ReBarCtl) {
+BaseOf_CommCtl(class ReBarCtl) {
 public:
 	static constexpr auto CtlClassName = REBARCLASSNAME;
 	using super = CommCtl<KChain<ReBarCtl<AnyChild>, AnyChild>>;
@@ -726,7 +726,7 @@ struct EditBalloonTip : protected EDITBALLOONTIP {
 	//LPCTSTR pszText;
 	//INT     ttiIcon; // From TTI_*
 };
-CommCtl_Based(class EditCtl) {
+BaseOf_CommCtl(class EditCtl) {
 public:
 	static constexpr auto CtlClassName = WC_EDIT;
 	using super = CommCtl<KChain<EditCtl<AnyChild>, AnyChild>>;

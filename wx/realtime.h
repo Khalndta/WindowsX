@@ -2,7 +2,8 @@
 #include <heapapi.h>
 #include <psapi.h>
 
-#include "security.h"
+#include "./window.h"
+#include "./security.h"
 
 namespace WX {
 
@@ -10,48 +11,54 @@ namespace WX {
 enum_flags(EventAccess, HandleAccess,
 	All    = EVENT_ALL_ACCESS,
 	Modify = EVENT_MODIFY_STATE);
-class Handle_Based(Event) {
-	Event(HANDLE h) : super(h) {}
+class BaseOf_Handle(Event) {
 public:
 	using super = HandleBase<Event>;
 	using Access = EventAccess;
-
-	Event() : Event(CreateStruct().operator WX::Event()) {}
+protected:
+	Event(HANDLE h) : super(h) {}
+	Event(const Event &evt) : super(evt) {}
+public:
+	Event() : Event(Create()) {}
 	Event(Null) {}
 	Event(Event &evt) : super(evt) {}
+	Event(Event &&evt) : super(evt) {}
+
+	using super::operator=;
 
 	class CreateStruct {
 		friend class Event;
-		String name;
-		bool bInitialState = false;
+		LPSECURITY_ATTRIBUTES lpAttributes = O;
 		bool bManualReset = false;
-		LPSECURITY_ATTRIBUTES pSA = O;
-		CreateStruct(String name = O) : name(name) {}
+		bool bInitialState = false;
+		LPCTSTR lpName;
+		CreateStruct(LPCTSTR lpName) : lpName(lpName) {}
 	public:
 		inline auto &Preset(bool bInitialState = true) reflect_to_self(this->bInitialState = bInitialState);
 		inline auto &AutoReset(bool bAutoReset = true) reflect_to_self(this->bManualReset = !bAutoReset);
 		inline auto &ManualReset(bool bManualReset = true) reflect_to_self(this->bManualReset = bManualReset);
-		inline auto &Security(const SecAttr &sa) reflect_to_self(this->pSA = &sa);
-		inline auto &Security(LPSECURITY_ATTRIBUTES pSA) reflect_to_self(this->pSA = pSA);
-		inline auto &Name(String name) reflect_to_self(this->name = name);
+		inline auto &Security(const SecAttr &sa) reflect_to_self(this->lpAttributes = &sa);
+		inline auto &Security(LPSECURITY_ATTRIBUTES pSA) reflect_to_self(this->lpAttributes = pSA);
+		inline auto &Name(LPCTSTR lpName) reflect_to_self(this->lpName = lpName);
 	public:
-		inline operator Event() const assert_reflect_as(auto h = CreateEvent(pSA, bManualReset, bInitialState, name), h);
+		inline operator Event() const assert_reflect_as(auto h = CreateEvent(lpAttributes, bManualReset, bInitialState, lpName), h);
 	};
-	inline static CreateStruct Create(String name = O) reflect_as(name);
+	inline static CreateStruct Create(LPCTSTR lpName = O) reflect_as(lpName);
 
 	class OpenStruct {
 		friend class Event;
 		Access dwDesiredAccess = Access::Modify;
 		BOOL bInheritHandle = false;
-		String name = O;
-		OpenStruct(String name) : name(name) {}
+		LPCTSTR lpName;
+		OpenStruct(LPCTSTR lpName) : lpName(lpName) {}
 	public:
 		inline auto &Accesses(Access dwDesiredAccess) reflect_to_self(this->dwDesiredAccess = dwDesiredAccess);
 		inline auto &Inherit(bool bInheritHandle = true) reflect_to_self(this->bInheritHandle = bInheritHandle);
+		inline auto &Name(LPCTSTR lpName) reflect_to_self(this->lpName = lpName);
 	public:
-		inline operator Event() const assert_reflect_as(auto h = OpenEvent(dwDesiredAccess.yield(), bInheritHandle, name), h);
+		inline operator Event() const assert_reflect_as(auto h = OpenEvent(dwDesiredAccess.yield(), bInheritHandle, lpName), h);
 	};
-	inline static OpenStruct Open(String name = O) reflect_as(name);
+	inline static OpenStruct Open(LPCTSTR lpName = O) reflect_as(lpName);
 
 	inline Event&Set() assert_reflect_as_self(SetEvent(self));
 	inline Event&Reset() assert_reflect_as_self(ResetEvent(self));
@@ -64,49 +71,54 @@ public:
 enum_flags(MutexAccess, HandleAccess,
 	All    = MUTEX_ALL_ACCESS,
 	Modify = MUTEX_MODIFY_STATE);
-class Handle_Based(Mutex) {
-	Mutex(HANDLE h) : super(h) {}
+class BaseOf_Handle(Mutex) {
 public:
 	using super = HandleBase<Mutex>;
 	using Access = MutexAccess;
-
-	Mutex() {}
+protected:
+	Mutex(HANDLE h) : super(h) {}
+	Mutex(const Mutex &m) : super(m.hObject) reflect_to(m.hObject = O);
+public:
+	Mutex() : Mutex(Create()) {}
 	Mutex(Null) {}
+	Mutex(Mutex &m) : super(m) {}
+	Mutex(Mutex &&m) : super(m) {}
+	~Mutex() reflect_to(ReleaseMutex(self));
 
-	~Mutex() { ReleaseMutex(self); }
+	using super::operator=;
 
 	class CreateStruct {
 		friend class Mutex;
-		String name;
-		bool bInitialState = false;
 		LPSECURITY_ATTRIBUTES lpMutexAttributes = O;
-		CreateStruct(String name = O) : name(name) {}
+		bool bInitialState = false;
+		LPCTSTR lpName;
+	protected:
+		CreateStruct(LPCTSTR lpName) : lpName(lpName) {}
 	public:
 		inline auto &Preset(bool bInitialState = true) reflect_to_self(this->bInitialState = bInitialState);
 		inline auto &Security(const SecAttr &MutexAttributes) reflect_to_self(this->lpMutexAttributes = &MutexAttributes);
 		inline auto &Security(LPSECURITY_ATTRIBUTES lpMutexAttributes) reflect_to_self(this->lpMutexAttributes = lpMutexAttributes);
-		inline auto &Name(String name) reflect_to_self(this->name = name);
 	public:
-		inline Mutex Create() const assert_reflect_as(auto h = CreateMutex(lpMutexAttributes, bInitialState, name), h);
-		inline operator Mutex() const reflect_as(Create());
+		inline operator Mutex() const assert_reflect_as(auto h = CreateMutex(lpMutexAttributes, bInitialState, lpName), h);
 	};
-	inline static CreateStruct Create(String name = O) reflect_as(name);
+	inline static CreateStruct Create(LPCTSTR lpName = O) reflect_as(lpName);
 
 	class OpenStruct {
 		friend class Mutex;
 		Access dwDesiredAccess = Access::Modify;
 		bool bInheritHandle = false;
-		String name = O;
-		OpenStruct(String name) : name(name) {}
+		LPCTSTR lpName;
+	protected:
+		OpenStruct(LPCTSTR lpName) : lpName(lpName) {}
 	public:
 		inline auto &Accesses(Access dwDesiredAccess) reflect_to_self(this->dwDesiredAccess = dwDesiredAccess);
 		inline auto &Inherit(bool bInheritHandle = true) reflect_to_self(this->bInheritHandle = bInheritHandle);
 	public:
-		inline operator Mutex() const assert_reflect_as(auto h = OpenMutex(dwDesiredAccess.yield(), bInheritHandle, name), h);
+		inline operator Mutex() const assert_reflect_as(auto h = OpenMutex(dwDesiredAccess.yield(), bInheritHandle, lpName), h);
 	};
-	inline static OpenStruct Open(String name = O) reflect_as(name);
+	inline static OpenStruct Open(LPCTSTR lpName = O) reflect_as(lpName);
 
-	inline auto&Release() assert_reflect_as_self(ReleaseMutex(self));
+	inline auto &Release() assert_reflect_as_self(ReleaseMutex(self));
 };
 #pragma endregion
 
@@ -128,11 +140,96 @@ enum_flags(ThreadAccess, Handle::Access,
 template<class AnyChild = void>
 class ThreadBase;
 using Thread = ThreadBase<>;
+template<>
+class ThreadBase<> : public HandleBase<ThreadBase<>> {
+public:
+	using super = HandleBase<ThreadBase<>>;
+	using Access = ThreadAccess;
+protected:
+	ThreadBase(HANDLE h) : super(h) {}
+	ThreadBase(const ThreadBase &t) : super(t.hObject) reflect_to(t.hObject = O);
+public:
+	ThreadBase() {}
+	ThreadBase(Null) {}
+	ThreadBase(ThreadBase &t) : super(t.hObject) reflect_to(t.hObject = O);
+	ThreadBase(ThreadBase &&t) : super(t.hObject) reflect_to(t.hObject = O);
+
+	using super::operator=;
+
+	template<class AnyChild = void>
+	class CreateStruct : public ChainExtend<CreateStruct<AnyChild>, AnyChild> {
+		friend class ThreadBase;
+		LPSECURITY_ATTRIBUTES lpThreadAttributes = O;
+		SIZE_T dwStackSize = 0;
+		LPTHREAD_START_ROUTINE lpStartAddress;
+		LPVOID lpParameter;
+		DWORD dwCreationFlags = STACK_SIZE_PARAM_IS_A_RESERVATION;
+	protected:
+		CreateStruct(LPTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParameter) : lpStartAddress(lpStartAddress), lpParameter(lpParameter) {}
+		CreateStruct(const CreateStruct &) = default;
+	public:
+		inline auto &Security(const SecAttr &ThreadAttributes) reflect_to_child(this->lpThreadAttributes = &ThreadAttributes);
+		inline auto &Security(LPSECURITY_ATTRIBUTES lpThreadAttributes) reflect_to_child(this->lpThreadAttributes = lpThreadAttributes);
+		inline auto &StackSize(size_t dwStackSize) reflect_to_child(this->dwStackSize = dwStackSize, this->dwCreationFlags &= ~STACK_SIZE_PARAM_IS_A_RESERVATION);
+		inline auto &Suspend(bool bSuspend) reflect_to_child(this->dwCreationFlags = bSuspend ? (this->dwCreationFlags | CREATE_SUSPENDED) : (this->dwCreationFlags & ~CREATE_SUSPENDED));
+	public:
+		template<class _Child>
+		inline ThreadBase<_Child> Create() assert_reflect_as(auto h = CreateThread(this->lpThreadAttributes, this->dwStackSize, this->lpStartAddress, this->lpParameter, this->dwCreationFlags, O), h);
+	};
+	inline static CreateStruct<> Create(LPTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParameter = O) reflect_as({ lpStartAddress, lpParameter });
+
+	class OpenStruct {
+		friend class ThreadBase;
+		Access dwDesiredAccess = Access::All;
+		bool bInheritHandle = false;
+		DWORD dwThreadId;
+		OpenStruct(DWORD dwThreadId) : dwThreadId(dwThreadId) {}
+	public:
+		inline auto &Accesses(Access dwDesiredAccess) reflect_to_self(this->dwDesiredAccess = dwDesiredAccess);
+		inline auto &Inherit(bool bInheritHandle) reflect_to_self(this->bInheritHandle = bInheritHandle);
+	public:
+		inline operator ThreadBase() const reflect_as(OpenThread(dwDesiredAccess.yield(), bInheritHandle, dwThreadId));
+	};
+	inline static OpenStruct Open(DWORD dwProcessId) reflect_as(dwProcessId);
+
+	inline void Suspend() assert_reflect_as(SuspendThread(self));
+	inline void Resume()  assert_reflect_as(ResumeThread(self));
+	inline bool Terminate(DWORD dwExitCode = 0) {
+		if (this->hObject)
+			if (!::TerminateThread(this->hObject, dwExitCode))
+				return false;
+		this->hObject = O;
+		return true;
+	}
+	
+	inline void Post(UINT msgid, WPARAM wParam, LPARAM lParam) const assert_reflect_as(PostThreadMessage(ID(), msgid, wParam, lParam));
+
+	inline static void Exit(DWORD dwExitCode = 0) reflect_to(ExitThread(dwExitCode));
+
+#pragma region Properties
+public: // Property - ID
+	/* W */ inline DWORD ID() const assert_reflect_as(auto id = GetThreadId(self), id);
+public: // Property - ExitCode
+	/* W */ inline DWORD ExitCode() const assert_reflect_to(DWORD dwExitCode, GetExitCodeThread(self, &dwExitCode), dwExitCode);
+public: // Property - StillActive
+	/* W */ inline bool StillActive() const {
+		try {
+			if (ExitCode() == STILL_ACTIVE)
+				return !super::WaitForSignal(0);
+		} catch (...) {}
+		return false;
+	}
+#pragma endregion
+};
 template<class AnyChild>
 class ThreadBase : public ChainExtend<ThreadBase<AnyChild>, AnyChild>,
-	public HandleBase<ThreadBase<AnyChild>> {
+	public Thread {
+public:
+	using super = Thread;
+protected:
+	friend class ThreadBase<>;
 	def_memberof(Start);
-	ThreadBase(HANDLE hThread) : super(hThread) {}
+	using ChainExtend<ThreadBase<AnyChild>, AnyChild>::child_;
 	static DWORD WINAPI Proc(LPVOID lpThis) {
 		using FuncTypeRet = DWORD();
 		if constexpr (member_Start_of<AnyChild>::template compatible_to<FuncTypeRet>)
@@ -143,75 +240,35 @@ class ThreadBase : public ChainExtend<ThreadBase<AnyChild>, AnyChild>,
 			return 0;
 		}
 	}
+protected:
+	ThreadBase(HANDLE h) : super(h) {}
+	ThreadBase(const ThreadBase &t) : super(t) {}
 public:
-	using super = HandleBase<ThreadBase>;
-	using Access = ThreadAccess;
-
-	ThreadBase() {
-		if constexpr (!std::is_void_v<AnyChild>)
-			static_assert(member_Start_of<AnyChild>::existed);
-	}
+	ThreadBase() {}
 	ThreadBase(Null) {}
-	~ThreadBase() reflect_to(super::WaitForSignal());
+	ThreadBase(ThreadBase &t) : super(t) {}
+	ThreadBase(ThreadBase &&t) : super(t) {}
+	~ThreadBase() reflect_to(if (self) super::WaitForSignal());
 
-	class OpenStruct {
-		friend class ThreadBase;
-		Access dwDesiredAccess = Access::All;
-		bool bInheritHandle = false;
-		DWORD dwThreadId = 0;
-		OpenStruct(DWORD dwThreadId) : dwThreadId(dwThreadId) {}
-	public: // Property - Accesses
-		/* W */ inline auto &Accesses(Access dwDesiredAccess) reflect_to_self(this->dwDesiredAccess = dwDesiredAccess);
-		/* W */ inline auto Inherit(bool bInheritHandle) reflect_to_self(this->bInheritHandle = bInheritHandle);
+	class CreateStruct : public Thread::CreateStruct<CreateStruct> {
 	public:
-		inline operator Thread() const reflect_as(OpenThread(dwDesiredAccess.yield(), bInheritHandle, dwThreadId));
-	};
-	inline static OpenStruct Open(DWORD dwProcessId) reflect_as(dwProcessId);
-
-	class CreateStruct {
+		using super = Thread::CreateStruct<CreateStruct>;
+	protected:
 		friend class ThreadBase;
-		ThreadBase *pThis;
-		LPSECURITY_ATTRIBUTES lpThreadAttributes = O;
-		SIZE_T dwStackSize = 0;
-		DWORD dwCreationFlags = STACK_SIZE_PARAM_IS_A_RESERVATION;
-		CreateStruct(ThreadBase &_this) : pThis(&_this) {}
+		ThreadBase &_this;
+		CreateStruct(ThreadBase & _this) : super(Proc, &_this), _this(_this) {}
 	public:
-		~CreateStruct() reflect_to(this->Create());
-		inline auto &Security(const SecAttr &ThreadAttributes) reflect_to_self(this->lpThreadAttributes = &ThreadAttributes);
-		inline auto &Security(LPSECURITY_ATTRIBUTES lpThreadAttributes) reflect_to_self(this->lpThreadAttributes = lpThreadAttributes);
-		inline auto &StackSize(size_t dwStackSize) reflect_to_self(this->dwStackSize = dwStackSize, this->dwCreationFlags &= ~STACK_SIZE_PARAM_IS_A_RESERVATION);
-		inline auto &Suspend(bool bSuspend) reflect_to_self(this->dwCreationFlags = bSuspend ? (this->dwCreationFlags | CREATE_SUSPENDED) : (this->dwCreationFlags & ~CREATE_SUSPENDED));
-		inline ThreadBase &Create() assert_reflect_as((this->pThis->hObject = CreateThread(this->lpThreadAttributes, this->dwStackSize, Proc, this->pThis, this->dwCreationFlags, O)), *pThis);
+		inline void Create() reflect_to(this->_this = super::template Create<AnyChild>());
+		inline operator bool() reflect_as(this->_this ? false : (this->_this = super::template Create<AnyChild>()));
 	};
 	inline CreateStruct Create() reflect_to_self();
 
-	inline auto &Suspend() assert_reflect_as_child(SuspendThread(self));
-	inline auto &Resume()  assert_reflect_as_child(ResumeThread(self));
-	inline bool Terminate(DWORD dwExitCode = 0) {
-		if (this->hObject)
-			if (!::TerminateThread(this->hObject, dwExitCode))
-				return false;
-		this->hObject = O;
-		return true;
-	}
-
-	inline static void Exit(DWORD dwExitCode = 0) reflect_to(ExitThread(dwExitCode));
-
-public: // Property - ID
-	/* W */ inline DWORD ID() const assert_reflect_as(auto id = GetThreadId(self), id);
-public: // Property - ExitCode
-	/* W */ inline DWORD ExitCode() const assert_reflect_to(DWORD dwExitCode, GetExitCodeThread(self, &dwExitCode), dwExitCode);
-public: // Property - StillActive
-	/* W */ inline bool StillActive() const {
-		try {
-			if (ExitCode() == STILL_ACTIVE)
-				return super::WaitForSignal(0);
-		} catch (...) {}
-		return false;
-	}
-
+	inline auto &operator=(ThreadBase &t) reflect_to_child(std::swap(this->hObject, t.hObject));
+	inline auto &operator=(ThreadBase &&t) reflect_to_child(std::swap(this->hObject, t.hObject));
+	inline auto &operator=(const ThreadBase &t) const reflect_to_child(std::swap(this->hObject, t.hObject));
 };
-#define Thread_Bsaed(name) name : public ThreadBase<name>
+#define SFINAE_Thread(name) friend class WX::ThreadBase<name>
+#define BaseOf_Thread(name) name : public WX::ThreadBase<name>
 #pragma endregion
 
 #pragma region Process
@@ -489,9 +546,9 @@ public: // Property - FillAttribute
 	/* R */ inline auto  FillAttribute() const reflect_as(this->dwFillAttribute);
 public: // Property - Flags
 	/* R */ inline StartupFlag Flags() const reflect_as(force_cast<StartupFlag>(this->dwFlags));
-public: // Property - ShowWindow
-	/* W */ inline auto &ShowWindow(SW wShowWindow) reflect_to_self(this->dwFlags |= STARTF_USESHOWWINDOW, this->wShowWindow = wShowWindow.yield());
-	/* R */ inline SW    ShowWindow() const reflect_as(force_cast<SW>(this->wShowWindow));
+public: // Property - Show
+	/* W */ inline auto  &Show(WX::SW wShow) reflect_to_self(this->dwFlags |= STARTF_USESHOWWINDOW, this->wShowWindow = wShow.yield());
+	/* R */ inline WX::SW Show() const reflect_as(force_cast<WX::SW>(this->wShowWindow));
 public: // Property - StdInput
 	/* W */ inline auto &StdInput(HANDLE hStdInput) reflect_to_self(this->dwFlags |= STARTF_USESTDHANDLES, this->hStdInput = hStdInput);
 	/* R */ inline auto  StdInput() const reflect_as(this->hStdInput);
@@ -504,7 +561,7 @@ public: // Property - StdError
 public:
 	inline LPSTARTUPINFO operator&() reflect_as(this);
 };
-class Handle_Based(Process) {
+class BaseOf_Handle(Process) {
 	using super = HandleBase<Process>;
 	Process(HANDLE h) : super(h) {}
 public:

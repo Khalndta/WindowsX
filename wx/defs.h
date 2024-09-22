@@ -145,10 +145,11 @@ public:
 
 class Exception;
 class Exception {
-	LPCTSTR lpszFile, lpszFunc, lpszSent;
-	size_t szFile, szFunc, szSent;
-	DWORD dwErrCode;
+	LPCTSTR lpszFile = O, lpszFunc = O, lpszSent = O;
+	size_t szFile = 0, szFunc = 0, szSent = 0;
+	DWORD dwErrCode = 0;
 public:
+	Exception() {}
 	template<size_t szFile, size_t szFunc, size_t szSent>
 	Exception(const TCHAR(&strFile)[szFile],
 			  const TCHAR(&strFunc)[szFunc],
@@ -165,262 +166,8 @@ public:
 	inline DWORD LastError() const reflect_as(dwErrCode);
 };
 
-#if UNICODE
-#	define assert(line) \
-{ if (!(line)) throw Exception(__FILEW__, __FUNCTIONW__, TEXT(#line)); }
-#else
-#	define assert(line) \
-{ if (!(line)) throw Exception(__FILE__, __FUNCTION__, TEXT(#line)); }
-#endif
-
-#if 0
-#pragma region Z-Token
-template<class AnyChar = TCHAR>
-struct ZRegexX {
-
-	using LP_CSTR = const AnyChar *;
-	using HP_CSTR = const LP_CSTR;
-
-#pragma region Offsets
-	static constexpr bool is(AnyChar ch, AnyChar st, AnyChar ed) reflect_as(st <= ed ? (st <= ch && ch <= ed) : (st < ch || ch < ed));
-	static constexpr bool is(AnyChar ch, LP_CSTR lpcDct, size_t len, size_t ind = 0) reflect_as(
-		_if (ind >= len)
-			_return false
-		_elif (is(ch, lpcDct[0], lpcDct[len]))
-			_return true
-		_else
-			_return is(ch, lpcDct + 1, len, ind + 1)
-	);
-	static constexpr bool in(AnyChar ch, LP_CSTR lpcDct, size_t len) reflect_as(
-		_if (len <= 1)
-			_return false
-		_elif (ch == lpcDct[0])
-			_return true
-		_else
-			_return in(ch, lpcDct + 1, len - 1)
-	);
-
-	static constexpr bool is_09(AnyChar ch) reflect_as(is<'0', '9'>(ch));
-	static constexpr bool is_AZ(AnyChar ch) reflect_as(is<'A', 'Z'>(ch));
-	static constexpr bool is_az(AnyChar ch) reflect_as(is<'a', 'z'>(ch));
-	static constexpr bool is_Az(AnyChar ch) reflect_as(is_AZ(ch) || is_az(ch));
-	static constexpr bool is_Word(AnyChar ch) reflect_as(is_Az(ch) || is_09(ch) || ch == '_');
-	static constexpr bool is_Space(AnyChar ch) reflect_as(in<' ', '\t'>(ch));
-	static constexpr bool is_Blank(AnyChar ch) reflect_as(is_Space(ch) || in<'\n', '\r'>(ch));
-
-	static constexpr HP_CSTR OffsetProtoWord(LP_CSTR lpc, HP_CSTR hpc) reflect_as(
-		_if (is_Word(lpc[0]))
-			_return OffsetProtoWord(lpc + 1, hpc)
-		_else
-			_return lpc
-	);
-	static constexpr HP_CSTR OffsetWord(LP_CSTR lpc, HP_CSTR hpc) reflect_as(
-		_if (is_Word(lpc[0]) && !is_09(lpc[0]))
-			_return OffsetProtoWord(lpc + 1, hpc)
-		_else
-			_return lpc
-	);
-	static constexpr HP_CSTR OffsetNumber(LP_CSTR lpc, HP_CSTR hpc) reflect_as(
-		_if (is_09(lpc[0]))
-			_return OffsetNumber(lpc + 1, hpc)
-		_else
-			_return lpc
-	);
-	static constexpr HP_CSTR OffsetBlank(LP_CSTR lpc, HP_CSTR hpc) reflect_as(
-		_if (is_Blank(lpc[0]))
-			_return OffsetBlank(lpc + 1, hpc)
-		_else
-			_return lpc
-	);
-	static constexpr HP_CSTR OffsetSpace(LP_CSTR lpc, HP_CSTR hpc) reflect_as(
-		_if (is_Space(lpc[0]))
-			_return OffsetSpace(lpc + 1, hpc)
-		_else 
-			_return lpc
-	);
-	static constexpr HP_CSTR OffsetToken(LP_CSTR lpc, HP_CSTR hpc, LP_CSTR lpclDst, HP_CSTR lpchDst) reflect_as(
-		_if (lpc[0] == lpclDst[0])
-			_return OffsetToken(lpc + 1, hpc, lpclDst + 1, lpchDst)
-		_else
-			_return lpc
-	);
-	//static constexpr HP_CSTR OffsetValue(LP_CSTR lpc, HP_CSTR hpc, size_t Level = 0) reflect_as(
-	//	_if (lpc[0] == '\0')
-	//		_return lpc
-	//	_elif (lpc[0] == '(')
-	//		_return OffsetValue(lpc + 1, hpc, Level + 1)
-	//	_elif (lpc[0] == ',')
-	//		_if (Level == 0)
-	//			_return lpc + 1
-	//		_else
-	//			_return OffsetValue(lpc + 1, hpc, Level)
-	//	_elif (lpc[0] == ')')
-	//		_if (Level == 0)
-	//			_return lpc
-	//		_else
-	//			_return OffsetValue(lpc + 1, hpc, Level - 1)
-	//	_else
-	//		_return OffsetValue(lpc + 1, hpc, Level)
-	//);
-#pragma endregion
-
-	struct Token {
-		LP_CSTR Low;
-		HP_CSTR High;
-		bool Matched = Low < High;
-		bool Catched;
-		constexpr Token(
-			LP_CSTR Low, HP_CSTR High,
-			bool Catched = false) :
-			Low(Low), High(High),
-			Catched(Catched) {}
-		constexpr Token(
-			LP_CSTR Low, HP_CSTR High,
-			bool Catched, bool Matched) :
-			Low(Low), High(High),
-			Matched(Matched), Catched(Catched) {}
-		constexpr auto Length() const reflect_as(High - Low);
-		constexpr operator bool() const reflect_as(Matched);
-	};
-
-	struct blank   : Token { constexpr blank  (LP_CSTR Low, HP_CSTR High) : Token(Low, is_Blank(Low[0]) ? Low + 1 : Low) {} };
-	struct blanks  : Token { constexpr blanks (LP_CSTR Low, HP_CSTR High) : Token(Low, OffsetBlank(Low, High)) {} };
-	struct space   : Token { constexpr space  (LP_CSTR Low, HP_CSTR High) : Token(Low, is_Space(Low[0]) ? Low + 1 : Low) {} };
-	struct spaces  : Token { constexpr spaces (LP_CSTR Low, HP_CSTR High) : Token(Low, OffsetSpace(Low, High)) {} };
-	struct word    : Token { constexpr word   (LP_CSTR Low, HP_CSTR High) : Token(Low, is_Word(Low[0]) ? Low + 1 : Low) {} };
-	struct words   : Token { constexpr words  (LP_CSTR Low, HP_CSTR High) : Token(Low, OffsetWord(Low, High)) {} };
-	struct number  : Token { constexpr number (LP_CSTR Low, HP_CSTR High) : Token(Low, is_09(Low[0]) ? Low + 1 : Low) {} };
-	struct numbers : Token { constexpr numbers(LP_CSTR Low, HP_CSTR High) : Token(Low, OffsetNumber(Low, High)) {} };
-
-	template<class AnyToken, size_t Times>
-	struct Rept;
-	template<class AnyToken>
-	struct Rept<AnyToken, 1> {
-		AnyToken tok;
-		constexpr Rept(LP_CSTR Low, HP_CSTR High) : tok(Low, High) {}
-		constexpr auto Catch() const reflect_as();
-		constexpr auto Length() const reflect_as(tok.Length());
-	};
-	template<class AnyToken, size_t Times>
-	struct Rept {
-		static_assert(Times);
-		AnyToken tok;
-		Rept<AnyToken, Times - 1> last;
-		constexpr Rept(LP_CSTR Low, HP_CSTR High) : tok(Low, High) {}
-		// constexpr auto Catch() const reflect_as({});
-		constexpr auto Length() const reflect_as(tok.Length() + last.Length());
-	};
-
-	//template<class AnyToken>
-	//struct ReptMax {
-	//	const size_t Times;
-	//	AnyToken last;
-	//	size_t LowOff = last.LowOff, HighOff = last.HighOff;
-	//	bool Matched = last.Matched, Catched = last.Catched;
-	//	constexpr ReptMax(LP_CSTR lpcStr, size_t LowOff = 0) :
-	//		Times(GetTimes(str, LowOff)), last(GetToken(Times, str, LowOff)) {}
-	//	constexpr auto Length() const reflect_as(HighOff - LowOff);
-	//	static constexpr AnyToken GetToken(size_t ind, LP_CSTR lpcStr, size_t LowOff) reflect_as(
-	//		_if (ind <= 1)
-	//			_return GetToken(ind, str, AnyToken(str, LowOff).HighOff)
-	//		_else
-	//			_return AnyToken(str, LowOff)
-	//	);
-	//	static constexpr size_t GetTimes(LP_CSTR lpcStr, size_t LowOff) reflect_as(
-	//		_if (AnyToken(str, LowOff).Matched)
-	//			_return 1 + GetTimes(str, AnyToken(str, LowOff).HighOff)
-	//		_else
-	//			_return 0
-	//	);
-	//};
-
-	//template<class...>
-	//struct And;
-	//template<class AnyToken>
-	//struct And<AnyToken> {
-	//	AnyToken tok;
-	//	size_t LowOff = tok.LowOff, HighOff = tok.HighOff;
-	//	bool Matched = tok.Matched, Catched = tok.Catched;
-	//	constexpr And(LP_CSTR lpcStr, size_t LowOff = 0) :
-	//		tok(str, LowOff) {}
-	//	constexpr auto Length() const reflect_as(tok.Length());
-	//	template<size_t ind>
-	//	constexpr auto CatchOf() const {
-	//		if constexpr (AnyToken::Catched && ind == 0)
-	//			return tok;
-	//		else
-	//			return;
-	//	}
-	//};
-	//template<class AnyToken, class...Args>
-	//struct And<AnyToken, Args...> {
-	//	AnyToken tok;
-	//	And<Args...> last;
-	//	size_t LowOff = last.LowOff, HighOff = last.HighOff;
-	//	bool
-	//		Matched = tok.Matched && last.Matched,
-	//		Catched = tok.Catched || last.Catched;
-	//	constexpr And(LP_CSTR lpcStr, size_t LowOff = 0) :
-	//		tok(str, LowOff), last(str, tok.HighOff) {}
-	//	constexpr auto Length() const reflect_as(HighOff - LowOff);
-	//	template<size_t ind>
-	//	constexpr auto CatchOf() const {
-	//		if constexpr (AnyToken::Catched)
-	//			if constexpr (ind == 0)
-	//				return tok;
-	//			else
-	//				return last.template catchOf<ind - 1>();
-	//		else
-	//			return last.template catchOf<ind>();
-	//	}
-	//};
-
-	//template<class...>
-	//struct Or;
-	//template<class AnyToken>
-	//struct Or<AnyToken> {
-	//	AnyToken tok;
-	//	size_t LowOff = tok.LowOff, HighOff = tok.HighOff;
-	//	bool Matched = true, Catched = tok.Catched;
-	//	constexpr Or(LP_CSTR lpcStr, size_t LowOff = 0) :
-	//		tok(str, LowOff) {}
-	//	constexpr auto Length() const reflect_as(tok.Length());
-	//	template<size_t ind>
-	//	constexpr auto CatchOf() const {
-	//		if constexpr (AnyToken::Catched && ind == 0)
-	//			return tok;
-	//		else
-	//			return;
-	//	}
-	//};
-	//template<class AnyToken, class...Args>
-	//struct Or<AnyToken, Args...> {
-	//	AnyToken tok;
-	//	Or<Args...> last;
-	//	size_t
-	//		LowOff = tok.Matched ? tok.LowOff : last.LowOff,
-	//		HighOff = tok.Matched ? tok.HighOff : last.HighOff;
-	//	bool
-	//		Matched = tok.Matched ? tok.Matched : last.Matched,
-	//		Catched = tok.Catched || last.Catched;
-	//	constexpr Or(LP_CSTR lpcStr, size_t LowOff = 0) :
-	//		tok(str, LowOff), last(str, LowOff) {}
-	//	constexpr auto Length() const reflect_as(HighOff - LowOff);
-	//	template<size_t ind>
-	//	constexpr auto CatchOf() const {
-	//		if constexpr (AnyToken::Catched)
-	//			if constexpr (ind == 0)
-	//				return tok;
-	//			else
-	//				return last.template catchOf<ind - 1>();
-	//		else
-	//			return last.template catchOf<ind>();
-	//	}
-	//};
-};
-using ZRegex = ZRegexX<>;
-#pragma endregion
-#endif
+#define assert(line) \
+{ if (!(line)) throw WX::Exception(TEXT(__FILE__), TEXT(__FUNCTION__), TEXT(#line)); }
 
 #pragma region Type Traits
 
@@ -437,44 +184,29 @@ struct ChainExtend {
 		if constexpr (!std::is_void_v<ChildClass>)
 			child_assert(ParentClass, ChildClass);
 	}
-	Child &child() reflect_as(*static_cast<Child *>(this));
-	const Child &child() const reflect_as(*static_cast<const Child *>(this));
-	Self &self() reflect_as(*static_cast<Self *>(this));
-	const Self &self() const reflect_as(*static_cast<const Self *>(this));
+	Child &child_() reflect_as(*static_cast<Child *>(this));
+	const Child &child_() const reflect_as(*static_cast<const Child *>(this));
+	Self &self_() reflect_as(*static_cast<Self *>(this));
+	const Self &self_() const reflect_as(*static_cast<const Self *>(this));
 };
 
-#define child    (this->child())
+#define child    (this->child_())
 #define self     (*this)
 #define retself  return self
 #define retchild return child
 
-#if UNICODE
-#	define assert_reflect_as(line, ...) \
-{ if (line) return __VA_ARGS__; throw Exception(__FILEW__, __FUNCTIONW__, TEXT(#line)); }
-#else
-#	define assert_reflect_as(line, ...) \
-{ if (line) return __VA_ARGS__; throw Exception(__FILE__, __FUNCTION__, TEXT(#line)); }
-#endif
+#define assert_reflect_as(line, ...) \
+{ if (line) return __VA_ARGS__; throw WX::Exception(TEXT(__FILE__), TEXT(__FUNCTION__), TEXT(#line)); }
 #define assert_reflect_as_self(line)  assert_reflect_as(line, self)
 #define assert_reflect_as_child(line) assert_reflect_as(line, child)
 
-#if UNICODE
-#	define assert_reflect_to(defs, line, ...) \
-{ defs; if (line) return __VA_ARGS__; throw Exception(__FILEW__, __FUNCTIONW__, TEXT(#line)); }
-#else
-#	define assert_reflect_to(defs, line, ...) \
-{ defs; if (line) return __VA_ARGS__; throw Exception(__FILE__, __FUNCTION__, TEXT(#line)); }
-#endif
+#define assert_reflect_to(defs, line, ...) \
+{ defs; if (line) return __VA_ARGS__; throw WX::Exception(TEXT(__FILE__), TEXT(__FUNCTION__), TEXT(#line)); }
 #define assert_reflect_to_self(defs, line)  assert_reflect_to(defs, line, self)
 #define assert_reflect_to_child(defs, line) assert_reflect_to(defs, line, child)
 
-#if UNICODE
-#	define check_reflect_to(line, ...) \
-{ line; if (auto _err = GetLastError()) throw Exception(__FILEW__, __FUNCTIONW__, TEXT(#line), _err); return __VA_ARGS__; }
-#else
-#	define check_reflect_to(line, ...) \
-{ line; if (auto _err = GetLastError()) throw Exception(__FILE__, __FUNCTION__, TEXT(#line), _err); return __VA_ARGS__; }
-#endif
+#define check_reflect_to(line, ...) \
+{ SetLastError(0); line; if (auto _err = GetLastError()) throw WX::Exception(TEXT(__FILE__), TEXT(__FUNCTION__), TEXT(#line), _err); return __VA_ARGS__; }
 #define check_reflect_to_self(line)  check_reflect_to(line, self)
 #define check_reflect_to_child(line) check_reflect_to(line, child)
 
@@ -904,7 +636,8 @@ using fn = Function<FuncTypes...>;
 struct LSize;
 struct LPoint : public POINT {
 	LPoint() : POINT{ 0 } {}
-	LPoint(const LPoint &p) : POINT{ p.x, p.y } {}
+	LPoint(const POINT &p) : POINT(p) {}
+	LPoint(const LPoint &p) : POINT(p) {}
 	LPoint(LONG a) : POINT{ a, a } {}
 	LPoint(LONG x, LONG y) : POINT{ x, y } {}
 	inline LPoint  operator+ ()                const reflect_to_self();
@@ -928,8 +661,8 @@ struct LPoint : public POINT {
 };
 struct LSize : public SIZE {
 	LSize() : SIZE{ 0 } {}
-	LSize(const SIZE &LSize) : SIZE(LSize) {}
-	LSize(const LSize &LSize) : SIZE(LSize) {}
+	LSize(const SIZE &s) : SIZE(s) {}
+	LSize(const LSize &s) : SIZE(s) {}
 	LSize(LONG c) : SIZE{ c, c } {}
 	LSize(LONG cx, LONG cy) : SIZE{ cx, cy } {}
 	inline LSize  operator+ ()               const reflect_to_self();

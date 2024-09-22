@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-#include "window.h"
+#include "./window.h"
 
 namespace WX {
 
@@ -35,7 +35,7 @@ public:
 #pragma region Properties
 public: // Property - Parent
 	/* W */ inline auto  &Parent(HWND hWnd) reflect_to_self(this->hwndOwner = hWnd);
-	/* R */ inline Window Parent() const reflect_as(this->hwndOwner);
+	/* R */ inline CWindow Parent() const reflect_as(this->hwndOwner);
 public: // Property - Module
 	/* W */ inline auto   &Module(HINSTANCE hMod) reflect_to_self(this->hInstance = (HWND &)hMod);
 	/* R */ inline CModule Module() const reflect_as((HINSTANCE &)this->hInstance);
@@ -106,7 +106,7 @@ public:
 #pragma region Properties
 public: // Property - Parent
 	/* W */ inline auto  &Parent(HWND hWnd) reflect_to_self(this->hwndOwner = hWnd);
-	/* R */ inline Window Parent() const reflect_as(this->hwndOwner);
+	/* R */ inline CWindow Parent() const reflect_as(this->hwndOwner);
 public: // Property - Module
 	/* W */ inline auto   &Module(HINSTANCE hMod) reflect_to_self(this->hInstance = hMod);
 	/* R */ inline CModule Module() const reflect_as((HINSTANCE &)this->hInstance);
@@ -189,7 +189,7 @@ public:
 #pragma region Properties
 public: // Property - Parent
 	/* W */ inline auto  &Parent(HWND hWnd) reflect_to_self(this->hwndOwner = hWnd);
-	/* R */ inline Window Parent() const reflect_as(this->hwndOwner);
+	/* R */ inline CWindow Parent() const reflect_as(this->hwndOwner);
 public: // Property - Module
 	/* W */ inline auto   &Module(HINSTANCE hMod) reflect_to_self(this->hInstance = hMod);
 	/* R */ inline CModule Module() const reflect_as((HINSTANCE &)this->hInstance);
@@ -245,7 +245,7 @@ public:
 #pragma region Properties
 public: // Property - Parent
 	/* W */ inline auto &Parent(HWND hWnd) reflect_to_self(this->hwndOwner = hWnd);
-	/* R */ inline Window Parent() const reflect_as(this->hwndOwner);
+	/* R */ inline CWindow Parent() const reflect_as(this->hwndOwner);
 public: // Property - Parent
 #pragma endregion
 
@@ -504,7 +504,8 @@ protected:
 		return (INT_PTR)false;
 	}
 };
-#define Dialog_Based(name) name : public DialogBase<name>
+#define SFINAE_Dialog(name) friend class WX::DialogBase<name>; friend class WX::WindowBase<name>
+#define BaseOf_Dialog(name) name : public WX::DialogBase<name>
 
 #pragma endregion
 

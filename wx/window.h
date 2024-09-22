@@ -43,22 +43,14 @@ enum_flags(MB, int,
 inline MB MsgBox(LPCTSTR lpCaption = S(""), LPCTSTR lpText = S(""), MB uType = MB::Ok, HWND hParent = O) reflect_as(force_cast<MB>(MessageBox(hParent, lpText, lpCaption, uType.yield())));
 #pragma endregion
 
-class WMailSlot {
-	using MsgProc = Function<LRESULT(WPARAM, LPARAM)>;
-	std::unordered_map<UINT, MsgProc> msglst;
-public:
-	inline MsgProc Attach(UINT msgid, MsgProc mf) {
-		std::swap(msglst[msgid], mf); return mf;
-	}
-	inline bool operator()(LRESULT &res, UINT msgid, WPARAM wParam, LPARAM lParam) {
-		auto &&itaFunc = msglst.find(msgid);
-		if (itaFunc == msglst.end()) return false;
-		res = itaFunc->second(wParam, lParam);
-		return true;
-	}
-};
-
 #pragma region WindowBase
+
+template<class AnyChild>
+class WindowBase;
+using Window = WindowBase<void>;
+using CWindow = RefAs<Window>;
+template<class AnyChild>
+using WindowShim = RefAs<WindowBase<AnyChild>>;
 
 #pragma region Misc
 struct TrackMouseEventBox : protected TRACKMOUSEEVENT {
@@ -71,11 +63,11 @@ public: // Property - HoverTime
 	/* R */ inline DWORD HoverTime() const reflect_as(this->dwHoverTime);
 public: // Property - Flags
 	enum_flags(Flag, DWORD,
-			  Hover = TME_HOVER,
-			  Leave = TME_LEAVE,
+			  Hover    = TME_HOVER,
+			  Leave    = TME_LEAVE,
 			  NoClient = TME_NONCLIENT,
-			  Query = TME_QUERY,
-			  Cancel = TME_CANCEL);
+			  Query    = TME_QUERY,
+			  Cancel   = TME_CANCEL);
 	/* W */ inline auto &Flags(Flag flag) reflect_to_self(this->dwFlags = flag.yield());
 	/* R */ inline Flag  Flags() const reflect_as(reuse_as<Flag>(this->dwFlags));
 public:
@@ -84,7 +76,6 @@ public:
 	inline const TRACKMOUSEEVENT *operator&() const reflect_as(this);
 };
 using TME = TrackMouseEventBox;
-
 class PaintStruct : protected PAINTSTRUCT {
 	HWND hwnd;
 	HDC hddc;
@@ -98,7 +89,6 @@ public:
 	inline LPPAINTSTRUCT operator&() reflect_as(this);
 	inline const PAINTSTRUCT *operator&() const reflect_as(this);
 };
-
 class WindowProcedure {
 	WNDPROC pfnWndProc = O;
 	HWND hWnd = O;
@@ -123,12 +113,64 @@ public:
 	inline operator WNDPROC() const reflect_as(pfnWndProc);
 	inline operator HWND() const reflect_as(hWnd);
 public:
-#define _SEND_(msgid, wparam, lparam) Call(msgid, wparam, lparam) 
+#define _SEND_(ret, msgid, wparam, lparam) \
+	ret(Call(msgid, wparam, lparam))
 #define MSG_TRANS(msgid, ret, name, argslist, args, send, call) \
 	inline ret name argslist reflect_as(send);
 #include "msg.inl"
 };
 using WndProc = WindowProcedure;
+
+class WMailSlot {
+	using MsgProc = Function<LRESULT(WPARAM, LPARAM)>;
+	std::unordered_map<UINT, MsgProc> msglst;
+public:
+	inline MsgProc Attach(UINT msgid, MsgProc mf) {
+		std::swap(msglst[msgid], mf); return mf;
+	}
+	inline bool operator()(LRESULT &res, UINT msgid, WPARAM wParam, LPARAM lParam) {
+		auto &&itaFunc = msglst.find(msgid);
+		if (itaFunc == msglst.end()) return false;
+		res = itaFunc->second(wParam, lParam);
+		return true;
+	}
+};
+class Message : protected MSG {
+public:
+	Message() : MSG{ 0 } {}
+	Message(Null) : MSG{ 0 } {}
+	Message(const MSG &msg) : MSG(msg) {}
+
+	inline bool Get(UINT wMsgFilterMin = 0, UINT wMsgFilterMax = 0) check_reflect_to(auto res = GetMessage(this, O, wMsgFilterMin, wMsgFilterMax), res);
+	inline bool Get(HWND hwnd, UINT wMsgFilterMin = 0, UINT wMsgFilterMax = 0) check_reflect_to(auto res = GetMessage(this, hwnd, wMsgFilterMin, wMsgFilterMax), res);
+	inline bool GetThread(UINT wMsgFilterMin = 0, UINT wMsgFilterMax = 0) check_reflect_to(auto res = GetMessage(this, (HWND)-1, wMsgFilterMin, wMsgFilterMax), res);
+
+	inline bool Translate() const reflect_as(TranslateMessage(this));
+	template<class RetType = LRESULT>
+	inline RetType Dispatch() const reflect_as((RetType)DispatchMessage(this));
+public: // Property - Window
+	/* W */ inline auto &Window(HWND hwnd) reflect_as(this->hwnd);
+	template<class Child = void>
+	/* S */ inline WindowBase<Child> &Window() reflect_as(WindowBase<Child>::Attach(this->hwnd));
+	template<class Child = void>
+	/* R */ inline WindowBase<Child> Window() const reflect_as(force_cast<WX::WindowBase<Child>>(this->hwnd));
+public:
+	//UINT        message;
+	//WPARAM      wParam;
+	//LPARAM      lParam;
+public: // Property - Time
+	/* W */ inline auto &Time(DWORD time) reflect_to_self(this->time = time);
+	/* R */ inline DWORD Time() const reflect_as(this->time);
+public: // Property - Point
+	/* W */ inline auto &Point(POINT pt) reflect_to_self(this->pt = pt);
+	/* R */ inline LPoint Point() const reflect_as(this->pt);
+public:
+	inline operator MSG &() reflect_to_self();
+	inline operator const MSG &() const reflect_to_self();
+	inline LPMSG operator&() reflect_as(this);
+	inline const MSG *operator&() const reflect_as(this);
+};
+using Msg = Message;
 
 enum_class(ShowWindows, int,
 	Hide             = SW_HIDE,
@@ -167,14 +209,16 @@ enum_flags(ClassStyle, UINT,
 	DropShadow         = CS_DROPSHADOW);
 using CStyle = ClassStyle;
 template<class = void>
-struct ClassBase;
+class ClassBase;
 using Class = ClassBase<>;
 template<class AnyChild>
-struct ClassBase : public ChainExtend<ClassBase<AnyChild>, AnyChild>,
+class ClassBase : public ChainExtend<ClassBase<AnyChild>, AnyChild>,
 	protected WNDCLASS {
+public:
 	using Child = KChain<ClassBase, AnyChild>;
-	ClassBase() : WNDCLASS{ 0 } { this->cbClsExtra = sizeof(Child) - sizeof(WNDCLASS); }
 	using Style = CStyle;
+public:
+	ClassBase() : WNDCLASS{ 0 } { this->cbClsExtra = sizeof(Child) - sizeof(WNDCLASS); }
 public: // Property - Styles
 	/* W */ inline auto  &Styles(Style style) reflect_to_child(this->style = style.yield());
 	/* S */ inline Style &Styles() reflect_as(reuse_as<Style>(this->style));
@@ -218,21 +262,23 @@ public: // Property - Name
 	/* S */ inline LPCTSTR     &Name() reflect_as(this->lpszClassName);
 	/* R */ inline const String Name() const reflect_as(CString(this->lpszClassName, MaxLenClass));
 public:
-	inline ATOM Register()                 const reflect_as(RegisterClass(this));
+	inline ATOM Register()                 const assert_reflect_as(auto atom = RegisterClass(this), atom);
 	inline bool Unregister(ATOM classAtom) const reflect_as(UnregisterClass(MAKEINTRESOURCE(classAtom), hInstance));
-	inline bool GetInfo()                        reflect_as(GetClassInfo(hInstance, lpszClassName, this));
-	inline bool GetInfo(ATOM classAtom)          reflect_as(GetClassInfo(hInstance, MAKEINTRESOURCE(classAtom), this));
+	inline auto&GetInfo()                        assert_reflect_as_self(GetClassInfo(hInstance, lpszClassName, this));
+	inline auto&GetInfo(ATOM classAtom)          assert_reflect_as_self(GetClassInfo(hInstance, MAKEINTRESOURCE(classAtom), this));
 	inline LPWNDCLASS      operator&()           reflect_as(this);
 	inline const WNDCLASS *operator&()     const reflect_as(this);
 };
 #pragma region ClassEx
 template<class = void>
-struct ClassExBase;
+class ClassExBase;
 using ClassEx = ClassExBase<>;
 template<class AnyChild>
-struct ClassExBase : public ChainExtend<ClassExBase<AnyChild>, AnyChild>,
+class ClassExBase : public ChainExtend<ClassExBase<AnyChild>, AnyChild>,
 	protected WNDCLASSEX {
+public:
 	using Child = KChain<ClassExBase, AnyChild>;
+public:
 	ClassExBase() : WNDCLASSEX{ 0 } {
 		this->cbSize = sizeof(WNDCLASSEX);
 		this->cbClsExtra = sizeof(Child) - sizeof(WNDCLASSEX);
@@ -358,12 +404,10 @@ using WSEX = WindowStyleEx;
 using WStyleEx = WindowStyleEx;
 #pragma endregion
 
-template<class AnyChild>
-class WindowBase;
-using Window = WindowBase<void>;
 template<class AnyChild, class Style = WStyle, class StyleEx = WStyleEx>
-struct CreateStruct : public ChainExtend<CreateStruct<AnyChild, Style, StyleEx>, AnyChild>,
+class CreateStruct : public ChainExtend<CreateStruct<AnyChild, Style, StyleEx>, AnyChild>,
 	protected CREATESTRUCT {
+public:
 	CreateStruct() : CREATESTRUCT{ 0 } {}
 	CreateStruct(const CREATESTRUCT *lpCreate) : CREATESTRUCT(*lpCreate) {}
 public: // Property - Param
@@ -415,24 +459,33 @@ public: // Property - ClientSize
 	/* W */ inline auto &ClientSize(LSize sz) reflect_as(ClientRect({ Position(), sz }));
 	/* W */ inline auto &ClientSize(LSize sz, UINT dpi) reflect_as(ClientRect({ Position(), sz }, dpi));
 public:
-	inline HWND Create() const assert_reflect_as(auto h = CreateWindowEx(dwExStyle, lpszClass, lpszName, style, x, y, cx, cy, hwndParent, hMenu, hInstance, lpCreateParams), h);
+	template<class AnyChild = void>
+ 	inline WindowShim<AnyChild> Create() const assert_reflect_as(auto h = CreateWindowEx(dwExStyle, lpszClass, lpszName, style, x, y, cx, cy, hwndParent, hMenu, hInstance, lpCreateParams), h);
 	inline LPCREATESTRUCT      operator&()       reflect_as(this);
 	inline const CREATESTRUCT *operator&() const reflect_as(this);
 };
 
 template<class AnyChild>
 class WindowBase : public ChainExtend<WindowBase<AnyChild>, AnyChild> {
-	HWND hWnd = O;
 public:
 	using super = WindowBase;
 	using Child = KChain<WindowBase, AnyChild>;
-
-	WindowBase() {}
-	WindowBase(HWND hWnd) : hWnd(hWnd) {}
-	~WindowBase() reflect_to(Destroy());
-
+	using Shim = WindowShim<AnyChild>;
 	using Style = WStyle;
 	using StyleEx = WStyleEx;
+protected:
+	friend union RefAs<WindowBase>;
+	template<class _AnyChild, class Style, class StyleEx>
+	friend class CreateStruct;
+	mutable HWND hWnd = O;
+	WindowBase(const WindowBase &w) : hWnd(w.hWnd) reflect_to(w.hWnd = O);
+	WindowBase(HWND hWnd) : hWnd(hWnd) {}
+public:
+	WindowBase() {}
+	WindowBase(Null) {}
+	WindowBase(WindowBase &w) : hWnd(w.hWnd) reflect_to(w.hWnd = O);
+	WindowBase(WindowBase &&w) : hWnd(w.hWnd) reflect_to(w.hWnd = O);
+	~WindowBase() reflect_to(Destroy());
 
 #pragma region Classes
 protected:
@@ -441,14 +494,15 @@ protected:
 	static const String &&_ClassName;
 protected:
 	template<class = void>
-	struct ClassBase;
+	class ClassBase;
 	using  Class = ClassBase<>;
 	template<class _AnyChild>
-	struct ClassBase :
-		public ChainExtend<ClassBase<_AnyChild>, _AnyChild>,
+	class ClassBase : public ChainExtend<ClassBase<_AnyChild>, _AnyChild>,
 		public WX::ClassBase<KChain<ClassBase<_AnyChild>, _AnyChild>> {
+	public:
 		using Child = KChain<ClassBase<_AnyChild>, _AnyChild>;
 		using super = WX::ClassBase<Child>;
+	public:
 		ClassBase() {
 			super::WndProc(MainProc<0>);
 			super::WndExtra(sizeof(Child));
@@ -463,14 +517,15 @@ protected:
 	};
 protected:
 	template<class = void>
-	struct ClassExBase;
-	using  ClassEx = ClassExBase<>;
+	class ClassExBase;
+	using ClassEx = ClassExBase<>;
 	template<class _AnyChild>
-	struct ClassExBase :
-		public ChainExtend<ClassExBase<_AnyChild>, _AnyChild>,
+	class ClassExBase : public ChainExtend<ClassExBase<_AnyChild>, _AnyChild>,
 		public WX::ClassExBase<KChain<ClassExBase<_AnyChild>, _AnyChild>> {
+	public:
 		using Child = KChain<ClassExBase, _AnyChild>;
 		using super = WX::ClassExBase<Child>;
+	public:
 		ClassExBase() {
 			super::WndProc(MainProc<0>);
 			super::WndExtra(sizeof(Child));
@@ -483,17 +538,17 @@ protected:
 	public: // Property - WndProc (deleted)
 		/* W */ inline auto &WndProc(WNDPROC) = delete;
 	};
-protected:
 	subtype_branch(xClass);
-	inline void Register() {
-		if (_ClassAtom) return;
+public:
+	inline ATOM Register() {
+		if (_ClassAtom) return _ClassAtom;
 		subtype_branchof_xClass<Child, ClassEx> cs;
 		if constexpr (std::is_same_v<decltype(cs), ClassEx>)
 			cs
 			.Cursor(IDC_ARROW)
 			.Styles(Class::Style::Redraw)
 			.Background(SysColor::WindowFrame);
-		assert(_ClassAtom = cs.Register());
+		return _ClassAtom = cs.Register();
 	}
 	inline void Unregister() {
 		if (_ClassAtom)
@@ -508,23 +563,30 @@ protected:
 public:
 	using CreateStruct = WX::CreateStruct<void, Style, StyleEx>;
 	template<class _AnyChild = void, class Style = WStyle, class StyleEx = WStyleEx>
-	class XCreate :
-		public WX::CreateStruct<KChain<XCreate<_AnyChild, Style, StyleEx>, _AnyChild>, Style, StyleEx> {
-		WindowBase &target;
-	public:
+	class XCreate : public WX::CreateStruct<KChain<XCreate<_AnyChild, Style, StyleEx>, _AnyChild>, Style, StyleEx> {
 		using Child = KChain<XCreate, _AnyChild>;
+		WindowBase &_this;
+	public:
 		using super = WX::CreateStruct<Child, Style, StyleEx>;
-		XCreate(WindowBase &win) : target(win) reflect_to(super::Class(_ClassAtom));
-	public: // Property - Class (delete)
-		/* W */ inline auto &Class(String) = delete;
+		XCreate(WindowBase &_this) : _this(_this) {
+			super::Class(_ClassAtom);
+			super::Param(&_this);
+		}
+	public: // Property - Param (deleted)
+		/* W */ inline auto &Param(LPVOID) = delete;
+		template<class AnyType>
+		/* R */ inline AnyType *Param() = delete;
+	public: // Property - Class (deleted)
+		/* W */ inline auto &Class(String) = delete; 
 		/* W */ inline auto &Class(ATOM) = delete;
 		/* R */ inline const String Class() const = delete;
 	public:
-		inline operator bool() reflect_as(target ? false : bool(target.hWnd = super::Create()));
+		inline void Create() reflect_to(this->_this = super::template Create<AnyChild>());
+		inline operator bool() reflect_as(this->_this ? false : (bool)super::template Create<AnyChild>());
 	};
 	inline auto Create() {
 		Register();
-		return subtype_branchof_xCreate<Child, XCreate<>>(self).Param(this);
+		return subtype_branchof_xCreate<Child, XCreate<>>(self);
 	}
 	inline bool Destroy() {
 		if (self)
@@ -589,13 +651,13 @@ protected:
 					break;
 #define _CALL_(name) pThis->name
 #define MSG_TRANS(msgid, ret, name, argslist, args, send, call) \
-					case msgid: \
-						if constexpr (member_##name##_of<Child>::existed) { \
-							using fn_type = ret argslist; \
-							misdef_assert((member_##name##_of<Child>::template compatible_to<fn_type>), \
-										  "Member " #name " must be a method compatible to " #ret #argslist); \
-							return call; \
-						} break;
+				case msgid: \
+					if constexpr (member_##name##_of<Child>::existed) { \
+						using fn_type = ret argslist; \
+						misdef_assert((member_##name##_of<Child>::template compatible_to<fn_type>), \
+										"Member " #name " must be a method compatible to " #ret #argslist); \
+						return call; \
+					} break;
 #include "msg.inl"
 			}
 			if constexpr (member_Callback_of<Child>::existed)
@@ -609,12 +671,13 @@ protected:
 public:
 	inline auto Call() {
 		class Pack {
-			HWND hWnd;
+			HWND hwnd;
 		public:
-			Pack(HWND hWnd) : hWnd(hWnd) {}
-#define _SEND_(msgid, wparam, lparam) CallDefProc(hWnd, msgid, wparam, lparam) 
+			Pack(HWND hwnd) : hwnd(hwnd) {}
 #define MSG_TRANS(msgid, ret, name, argslist, args, send, call) \
-	inline ret name argslist reflect_as(send);
+			inline ret name argslist reflect_as(send);
+#define _SEND_(ret, msgid, wparam, lparam) \
+			ret(CallDefProc(hwnd, msgid, wparam, lparam))
 #include "msg.inl"
 		} p = (HWND)self;
 		return p;
@@ -624,21 +687,99 @@ public:
 #pragma region Message System
 public:
 	template<class AnyType = LRESULT, class WParam = WPARAM, class LParam = LPARAM>
-	inline AnyType Send(UINT msg, WParam wParam = 0, LParam lParam = 0) const check_reflect_to(auto res = force_cast<AnyType>(SendMessage(self, msg, (WPARAM)wParam, (LPARAM)lParam)), res);
-public:
-	inline auto Send() {
-		class Pack {
-			friend class WindowBase<AnyChild>;
-			Window win;
-			Pack(HWND hwnd) : win(hwnd) {}
-		public:
-#define _SEND_(msgid, wparam, lparam) this->win.Send(msgid, wparam, lparam) 
+	inline AnyType Send(UINT msgid, WParam wParam = 0, LParam lParam = 0) const 
+		check_reflect_to(auto res = force_cast<AnyType>(SendMessage(self, msgid, (WPARAM)wParam, (LPARAM)lParam)), res);
+	//template<class WParam = WPARAM, class LParam = LPARAM>
+	//inline auto &SendTimeout(UINT msgid, WParam wParam = 0, LParam lParam = 0) {
+	//	SendMessageTimeoutW(self, msgid, wParam, lParam, )
+	//}
+	template<class AnyProc>
+	class AsyncProc {
+	protected:
+		def_memberof(Default);
+		friend class WindowBase;
+		static void lpfnCallback(HWND hwnd, UINT msgid, ULONG_PTR lpThis, LRESULT res) {
+			auto lpChild = (AnyProc *)lpThis;
+			Shim wnd = hwnd;
+			switch (msgid) {
+				case WM_NULL:
+					return;
 #define MSG_TRANS(msgid, ret, name, argslist, args, send, call) \
-			inline ret name argslist reflect_as(send);
+				case msgid: \
+					if constexpr (member_##name##_of<AnyProc>::existed) { \
+						if constexpr (std::is_void_v<ret> || member_##name##_of<Child>::template compatible_to<void(Shim)>) { \
+							misdef_assert((member_##name##_of<Child>::template compatible_to<void(Shim)>), \
+										  "Member " #name " must be a method compatible to void(Shim)"); \
+							lpChild->name(wnd); \
+						} \
+						else { \
+							misdef_assert((member_##name##_of<Child>::template compatible_to<void(Shim, ret)>), \
+										  "Member " #name " must be a method compatible to void(Shim) or void(Shim, " #ret ")"); \
+							lpChild->name(wnd, ret(res)); \
+						} return; \
+					} break;
 #include "msg.inl"
-		} p = (HWND)self;
-		return p;
-	}
+
+ 			}
+			if constexpr (member_Default_of<AnyProc>::existed) {
+				//if constexpr (member_Default_of<AnyProc>::template compatible_to<void(Shim, UINT, LRESULT)>)
+				//	lpChild->Default(wnd, msgid, res);
+				//else if constexpr (member_Default_of<AnyProc>::template compatible_to<void(Shim, UINT)>) 
+				//	lpChild->Default(wnd, msgid);
+				//else 
+				//misdef_assert((),
+				//			   "Member Default must be method compatible to void(Shim, UINT, LRESULT)");
+			}
+			delete lpChild;
+		
+		}
+	};
+	template<class AnyProc, class WParam = WPARAM, class LParam = LPARAM>
+	inline auto &SendCallback(AsyncProc<AnyProc> *pProc, UINT msgid, WParam wParam = 0, LParam lParam = 0)
+		assert_reflect_as_child(SendMessageCallback(self, msgid, wParam, lParam, AsyncProc<AnyProc>::lpfnCallback, (ULONG_PTR)pProc));
+	template<class WParam = WPARAM, class LParam = LPARAM>
+	inline auto &Post(UINT msgid, WParam wParam = 0, LParam lParam = 0) const assert_reflect_as_child(PostMessage(self, msgid, wParam, lParam));
+public:
+	class MessageSwitch {
+	protected:
+		friend MessageSwitch WindowBase<AnyChild>::Message();
+		HWND hwnd;
+		MessageSwitch(HWND hwnd) : hwnd(hwnd) {}
+	public:
+		template<class RetType>
+		class Indirect {
+		protected:
+			friend class MessageSwitch;
+			HWND hwnd;
+			UINT msgid;
+			WPARAM wParam;
+			LPARAM lParam;
+			Indirect(HWND hwnd, UINT msgid, WPARAM wParam, LPARAM lParam) :
+				hwnd(hwnd), msgid(msgid), wParam(wParam), lParam(lParam) {}
+		public:
+			inline RetType Send() check_reflect_to(auto res = SendMessage(hwnd, msgid, wParam, lParam), (RetType)res);
+			template<class AnyCallback>
+			inline void SendCallback(AnyCallback cb) {
+				struct AsyncProc {
+					AnyCallback cb;
+					AsyncProc(AnyCallback &cb) : cb(cb) {}
+					static void lpfnCallback(HWND hwnd, UINT msgid, ULONG_PTR ulpThis, LRESULT res) {
+						auto lpThis = (AsyncProc *)ulpThis;
+						lpThis->cb();
+						delete lpThis;
+					}
+				};
+				assert(SendMessageCallback(hwnd, msgid, wParam, lParam, AsyncProc::lpfnCallback, (ULONG_PTR)(new AsyncProc(cb))));
+			}
+			inline void Post() assert_reflect_as(PostMessage(hwnd, msgid, wParam, lParam));
+		};
+#define MSG_TRANS(msgid, ret, name, argslist, args, send, call) \
+		inline Indirect<ret> name argslist send
+#define _SEND_(ret, msgid, wparam, lparam) \
+			reflect_as({ hwnd, msgid, wparam, lparam });
+#include "msg.inl"
+	};
+	inline MessageSwitch Message() reflect_as(hWnd);
 #pragma endregion
 
 #pragma region Methods
@@ -797,13 +938,16 @@ public: // Property - ClassAtom
 
 	inline static Window &Attach(HWND &hWnd) reflect_as(reuse_as<Window>(hWnd));
 
-	inline operator bool() const reflect_as(IsWindow(self));
+	inline auto &operator=(WindowBase &w) reflect_to_child(std::swap(this->hWnd, w.hWnd));
+	inline auto &operator=(const WindowBase &w) const reflect_to_child(std::swap(this->hWnd, w.hWnd));
+
+	inline operator bool() const reflect_as(IsWindow(hWnd));
 	inline operator HWND() const reflect_as(hWnd);
+	inline operator Window &() reflect_as(reuse_as<Window>(hWnd));
+	inline operator const Window() const reflect_as(hWnd);
 
 	inline AnyChild *operator*() reflect_as(HeapPtr());
 	inline const AnyChild *operator*() const reflect_as(HeapPtr());
-	inline operator Window &() reflect_as(reuse_as<Window>(self));
-	inline operator const Window() const reflect_as(hWnd);
 };
 template<class AnyChild, class Style, class StyleEx>
 inline Window &CreateStruct<AnyChild, Style, StyleEx>::Parent() reflect_as(Window::Attach(this->hwndParent));
@@ -814,24 +958,25 @@ using WXCreate = typename WindowBase<AnyChild>::template XCreate<SubXCreate, Sty
 template<class AnyChild> ATOM WindowBase<AnyChild>::_ClassAtom = 0;
 template<class AnyChild> HINSTANCE WindowBase<AnyChild>::_hClassModule = O;
 template<class AnyChild> const String &&WindowBase<AnyChild>::_ClassName = Fits(typeid(typename WindowBase<AnyChild>::Child).name(), MaxLenClass);
-#define Window_Based(name) name : public WindowBase<name>
+#define SFINAE_Window(name) friend class WX::WindowBase<name>
+#define BaseOf_Window(name) name : public WX::WindowBase<name>
 #define WxCreate() public: struct xCreate : XCreate<xCreate>
 #define WxClass() public: struct xClass : ClassExBase<xClass>
 #pragma endregion
 
 class Console {
+public:
+//	using super = Window;
 protected:
-	Window con;
 	HANDLE hOut, hErr, hIn;
 public:
-	using super = Window;
 
 	Console() { if (!Load()) Alloc(); }
 	Console(DWORD pid) { Attach(pid); }
 	~Console() { Free(); }
 
 	inline bool Load() {
-		con = GetConsoleWindow();
+		// con = GetConsoleWindow();
 		hOut = GetStdHandle(STD_OUTPUT_HANDLE);
 		hErr = GetStdHandle(STD_ERROR_HANDLE);
 		hIn = GetStdHandle(STD_INPUT_HANDLE);

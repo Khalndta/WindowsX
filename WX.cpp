@@ -8,35 +8,6 @@ using namespace WX;
 
 Console con;
 
-inline void SaveToFile(DC &dc, const Palette &pal, const Bitmap &bmp, File &file) {
-	auto &&log = bmp.Log();
-	bool usePal = log.BitsPerPixel() < 24 && pal;
-	auto usage = usePal ? DIB_PAL_COLORS : DIB_RGB_COLORS;
-	auto palSize = usePal ? (DWORD)std::min(pal.Size(), (size_t)4 << log.BitsPerPixel()) : 0;
-	BitmapHeader header;
-	header.Size(log.Size());
-	header.Planes(log.Planes());
-	header.BitsPerPixel(log.BitsPerPixel());
-	assert(GetDIBits(dc, bmp, 0, log.Height(), O, header, usage));
-	header.PaletteSize(palSize);
-	header.ColorsSize(header.SizeImage());
-	assert(file.Write(&header, sizeof(header) - 4) == sizeof(header) - 4);
-	assert(file.Write(pal.Entries().data(), palSize) == palSize);
-	AutoPointer<Heap> hBits(header.SizeImage());
-	assert(GetDIBits(dc, bmp, 0, log.Height(), &hBits, header, usage));
-	assert(file.Write(&hBits, header.SizeImage()) == header.SizeImage());
-}
-
-inline Bitmap ClipBitmap(const Bitmap &bmp, LRect rc) {
-	auto &&size = rc.size();
-	Bitmap nBmp = Bitmap::Create(size).BitsPerPixel(bmp.Log().BitsPerPixel());
-	DC srcDC = DC::CreateCompatible(), dstDC = DC::CreateCompatible();
-	srcDC.Select(nBmp);
-	dstDC.Select(bmp);
-	srcDC.BltBit(0, size, dstDC);
-	return nBmp;
-}
-
 #pragma region SimDisp
 
 auto
@@ -76,16 +47,35 @@ static DC &TayKit(DC &dc, LPoint org, int r) {
 	return dc;
 }
 
-class Window_Based(SiDiWindow) {
-	friend class WindowBase<SiDiWindow>;
+class BaseOf_Window(SiDiWindow) {
+	SFINAE_Window(SiDiWindow);
+public:
+	LSize ScreenSizeMax = { GetSystemMetrics(SM_CXSCREEN) + 1, GetSystemMetrics(SM_CYSCREEN) + 1 }; ////////////////////
+private:
 	LRect Border = 20;
-	struct Window_Based(GraphPanel) {
+	class BaseOf_Window(GraphPanel) {
+		SFINAE_Window(GraphPanel);
 		SiDiWindow &parent;
+		LSize ScreenSizeMax = parent.ScreenSizeMax;
+		WX::DC dcBmp = WX::DC::CreateCompatible();
+		void *pbits = O;
+		File bmpBuff = File().CreateMapping(ScreenSizeMax.cx * ScreenSizeMax.cy * 4)
+			.Security(InheritHandle);
+		Bitmap bmp = Bitmap::Create(
+			BitmapHeader()
+				.Size(ScreenSizeMax)
+				.BitsPerPixel(32)
+				.Planes(1),
+			&pbits, bmpBuff);
+	public:
 		bool bMaskKeyboard = false,
 			bMaskMouse = false,
 			bMaskTouch = false,
 			bHideCursor = false;
+	public:
 		GraphPanel(SiDiWindow &parent) : parent(parent) {}
+#pragma region Precreate
+	private:
 		WxClass() {
 			xClass() {
 				Styles(CStyle::Redraw);
@@ -97,20 +87,11 @@ class Window_Based(SiDiWindow) {
 				.Parent(parent)
 				.Styles(WStyle::Child | WStyle::Visible);
 		}
-		WX::DC dcBmp = WX::DC::CreateCompatible();
-		void *pbits = O;
-		File bmpBuff = File().CreateMapping()
-			.Security(InheritHandle)
-			.Size(screenSize.cx * screenSize.cy * 4)
-			.Protect(PageAccess::ReadWrite);
-		Bitmap bmp = Bitmap::Create(
-			BitmapHeader()
-				.Size(screenSize)
-				.BitsPerPixel(32)
-				.Planes(1),
-			&pbits, bmpBuff);
+#pragma endregion
+#pragma region Events
+	private:
 		inline bool OnCreate(CreateStruct cs) {
-			memset(pbits, ~0, screenSize.cx * screenSize.cy * 4);
+			memset(pbits, ~0, ScreenSizeMax.cx * ScreenSizeMax.cy * 4);
 			dcBmp.Select(bmp);
 			return true;
 		}
@@ -118,17 +99,6 @@ class Window_Based(SiDiWindow) {
 			auto &&ps = BeginPaint();
 			auto &&sz = Size();
 			DC()->BltBit(0, sz, dcBmp);
-		}
-		inline bool SaveToFile(LPCTSTR lpFilename) {
-			try {
-				File file = File::Create(lpFilename).CreateAlways().Accesses(FileAccess::GenericWrite);
-				::SaveToFile(DC(), Palette::Default(), ClipBitmap(bmp.Clone(), Size()), file);
-				return true;
-			}
-			catch (WX::Exception err) {
-				con.Log(_T("Error: "), err);
-			}
-			return false;
 		}
 #pragma region Mouse
 		bool OnSetCursor(HWND hwndCursor, UINT codeHitTest, UINT msg) {
@@ -153,7 +123,33 @@ class Window_Based(SiDiWindow) {
 			parent.OnPanelMouse(pt.x, pt.y, fwKeys, z);
 		}
 #pragma endregion
+#pragma endregion
+	public:
+		inline bool SaveToFile(LPCTSTR lpFilename) {
+			try {
+				File file = File::Create(lpFilename).CreateAlways().Accesses(FileAccess::GenericWrite);
+				::SaveToFile(DC(), Palette::Default(), ClipBitmap(bmp.Clone(), Size()), file);
+				return true;
+			} catch (WX::Exception err) {
+				con.Log(_T("Error: "), err);
+			}
+			return false;
+		}
 	} panel = self;
+#pragma region Precreate
+	enum eMenu {
+		IDM_PRINTSCREEN,
+		IDM_EXIT,
+		IDM_RESIZE,
+		IDM_INVERT,
+		IDM_HIDECURSOR,
+		IDM_LOCKCURSOR,
+		IDM_MASK_MOUSE,
+		IDM_MASK_TOUCH,
+		IDM_MASK_KEYBOARD,
+		IDM_ABOUT
+	};
+	WX::Menu menu = WX::Menu::Create();
 	WxClass() {
 		xClass() {
 			Styles(CStyle::Redraw);
@@ -169,27 +165,12 @@ class Window_Based(SiDiWindow) {
 					.CreateCompatible()(bmpMask)
 					.Fill(Brush::White())
 					(Brush::Black()).DrawEllipse({ 0, 0, size, size });
-				return ::Icon::Create().Colors(bmpColor).Masks(bmpMask);
+				return ::Icon::Create(bmpColor, bmpMask);
 			};
 			Icon(makeIcon(128));
 			IconSm(makeIcon(48));
 		}
 	};
-	enum eMenu {
-		IDM_PRINTSCREEN,
-		IDM_EXIT,
-		IDM_RESIZE,
-		IDM_INVERT,
-		IDM_HIDECURSOR,
-		IDM_LOCKCURSOR,
-		IDM_MASK_MOUSE,
-		IDM_MASK_TOUCH,
-		IDM_MASK_KEYBOARD,
-		IDM_ABOUT
-	};
-	WX::Menu menu = WX::Menu::Create();
-	StatusBar sbar;
-#pragma region Events
 	inline auto Create() {
 		return super::Create()
 			.Styles(WS::MinimizeBox | WS::Caption | WS::SysMenu | WS::ClipChildren)
@@ -214,6 +195,9 @@ class Window_Based(SiDiWindow) {
 				  .Popup(S("&Help"), Menu::CreatePopup()
 						 .String(S("&About"), IDM_ABOUT)));
 	}
+#pragma endregion
+#pragma region Events
+	StatusBar sbar;
 	inline bool OnCreate(CreateStruct cs) {
 		if (!sbar.Create(self)) return false;
 		auto rc = AdjustRect(cs.Rect() + LSize(Border.bottom_right() + Border.top_left()) + LSize(0, sbar.Size().cy));
@@ -310,13 +294,14 @@ class Window_Based(SiDiWindow) {
 			pfnOnMouse(x, y, z, mk);
 	}
 	inline void OnResizeBox() {
-		struct Dialog_Based(ResizeBox) {
+		class BaseOf_Dialog(ResizeBox) {
+			SFINAE_Dialog(ResizeBox);
+		public:
 			LSize size;
 			ResizeBox(LSize size) : size(size) {}
-			enum {
-				IDE_CX = 0x20,
-				IDE_CY
-			};
+#pragma region Precreate
+		private:
+			enum { IDE_CX = 0x20, IDE_CY };
 			inline static LPDLGTEMPLATE Forming() {
 				static auto &&hDlg = DFact()
 					.Style(WS::Caption | WS::SysMenu | WS::Popup)
@@ -346,6 +331,9 @@ class Window_Based(SiDiWindow) {
 						 .ID(IDCANCEL)).Make();
 				return &hDlg;
 			}
+#pragma endregion
+#pragma region Event
+		private:
 			inline bool InitDialog() {
 				Item(IDE_CX).Int(size.cx);
 				Item(IDE_CY).Int(size.cy);
@@ -370,6 +358,7 @@ class Window_Based(SiDiWindow) {
 				}
 			}
 			inline void OnClose() { End(IDCANCEL); }
+#pragma endregion
 		} rsBox = panel.Size();
 		if (rsBox.Box(self) == IDOK)
 			if (!Resize(rsBox.size))
@@ -377,7 +366,6 @@ class Window_Based(SiDiWindow) {
 	}
 #pragma endregion
 public:
-	static const LSize screenSize;
 	inline bool PrintScreen(LPCTSTR lpFilename) reflect_as(panel.SaveToFile(lpFilename));
 	inline bool PrintScreen() {
 		ChooserFile cf;
@@ -434,51 +422,81 @@ public:
 	}
 	inline void SetOnResize(tSimDisp_OnResize pfnOnResize) { this->pfnOnResize = pfnOnResize; }
 	inline void SetOnMouse(tSimDisp_OnMouse pfnOnMouse) { this->pfnOnMouse = pfnOnMouse; }
-	inline void Flush() reflect_to(this->Send().OnPaint());
-	inline void *GetBits() reflect_as(panel.pbits);
-	inline CFile GetBitsMapping() reflect_as(panel.bmpBuff);
+	inline void Flush() reflect_to(this->Message().OnPaint().Send());
+	//inline void *GetBits() reflect_as(panel.pbits);
+	//inline CFile GetBitsMapping() reflect_as(panel.bmpBuff);
 	inline LSize ScreenSize() const reflect_as(panel.Size());
-	inline LSize ScreenSizeMax() const reflect_as(screenSize);
 };
-
-const LSize SiDiWindow::screenSize = { GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN) };
-
-bool test_window() {
-	try {
-		con.Log("Max size - ", SiDiWindow::screenSize.cx, 'x', SiDiWindow::screenSize.cy, '\n');
-		SiDiWindow p;
-
-		if (!p.Create().Size({ 400, 300 }).Caption(S("Window X By Nurtas Ihram")))
-			return false;
-
-		p.Update();
-		p.Show();
-		p.Resizeable(true);
-
-		MSG msg;
-		while (GetMessage(&msg, 0, 0, 0)) {
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-		}
-	}
-	catch (WX::Exception err) {
-		con.Log(_T("Error: "), err);
-	}
-
-	return true;
-}
 
 #pragma endregion
 
+class BaseOf_Thread(SiDiClient) {
+	SFINAE_Thread(SiDiClient);
+	using super = ThreadBase<SiDiClient>;
+	LPCWSTR lpTitle = L"SimDisp Display By Nurtas Ihram";
+	uint16_t xSize = 400, ySize = 300;
+	SiDiWindow Win;
+	Exception err;
+	Event evtInited = Event::Create();
+	bool bError = false;
+protected:
+	void Start() {
+		try {
+			evtInited.Reset();
+			bError = false;
+			if (!Win.Create().Size({ xSize, ySize }).Caption(lpTitle))
+				return;
+			Win.Update();
+			Win.Show();
+			evtInited.Set();
+			Message msg;
+			while (msg.Get()) {
+				msg.Translate();
+				msg.Dispatch();
+			}
+		} catch (Exception err) {
+			bError = true;
+			Win.Destroy();
+			this->err = err;
+		}
+	}
+public:
+	inline bool Create(LPCWSTR lpTitle, uint16_t xSize, uint16_t ySize) {
+		if (!super::Create())
+			return false;
+		this->lpTitle = lpTitle;
+		this->xSize = xSize;
+		this->ySize = ySize;
+		evtInited.WaitForSignal(5000);
+		return !bError;
+	}
+	template<class AnyFunction>
+	inline bool Do(const AnyFunction & fn_) {
+		try {
+			fn_(Win);
+		} catch (Exception err) {
+			this->err = err;
+			return false;
+		}
+		return true;
+	}
+} SimDispd;
+
+bool test_window() {
+	assert(SimDispd.Create(_T("SimDisp - NI"), 400, 300));
+	SimDispd.WaitForSignal();
+	return true;
+}
+
 void test_thread() {
-	struct Thread_Bsaed(__) {
+	struct BaseOf_Thread(__) {
 		inline void Start() {
 			auto &&pmc = Process::Current().Memory();
 			SIZE_T physicalMemUsedByProcess = pmc.WorkingSetSize;
 			con("Physical memory used: ", (double)physicalMemUsedByProcess / 1048576., "MB\n");
 		}
 	} p;
-	p.Create();
+	assert(p.Create());
 	p.WaitForSignal();
 }
 
@@ -494,8 +512,19 @@ void test_proc() {
 
 void test_file() {
 	File file = File::Create(_T("WX.cpp")).OpenExisting();
-	con.Log("Date & Time: ", file.Times().Created, '\n');
+	con.Log("Date & Time: ", file.Times().Creation, '\n');
 	con.Log("Size: ", file.Size(), '\n');
+}
+
+#define MOD_NAME WxDllTest
+#define DLL_IMPORTS "../dllexports.inl"
+#define DLL_IMPORTS_DEF
+#include "./wx/dll.inl"
+
+void test_dll() {
+	using namespace WxDllTest;
+	LoadDll(_T("WX_DLL.dll"));
+	DLL_Notice(L"DLL loaded");
 }
 
 // void test_comm() {
@@ -521,12 +550,14 @@ int main(int argc, char *argv[]) {
 	try {
 //		test_sa();
 //		test_file();
-//		test_thread();
+		test_thread();
 //		test_proc();
 //		test_comm();
+		test_dll();
 		test_window();
 	} catch (WX::Exception err) {
 		con.Log(_T("Error: "), err);
+		system("pause");
 	}
 	return 0;
 }

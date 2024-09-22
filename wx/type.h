@@ -21,14 +21,19 @@ using Handle = HandleBase<void>;
 template<class AnyChild>
 class HandleBase : public ChainExtend<HandleBase<AnyChild>, AnyChild> {
 protected:
-	HANDLE hObject;
+	mutable HANDLE hObject = O;
 public:
 	using Child = KChain<HandleBase, AnyChild>;
 	using Access = HandleAccess;
-
-	HandleBase(HandleBase &obj) : hObject(obj.hObject) { obj.hObject = O; }
-	HandleBase(HANDLE hObject = O) : hObject(hObject) {}
-	~HandleBase() { Close(); }
+protected:
+	HandleBase(HANDLE h) : hObject(h) {}
+	HandleBase(const HandleBase &h) : hObject(h.hObject) reflect_to(h.hObject = O);
+public:
+	HandleBase() {}
+	HandleBase(Null) {}
+	HandleBase(HandleBase &obj) : hObject(obj.hObject) reflect_to(obj.hObject = O);
+	HandleBase(HandleBase &&obj) : hObject(obj.hObject) reflect_to(obj.hObject = O);
+	~HandleBase() reflect_to(Close());
 
 	inline bool Close() {
 		if (hObject)
@@ -42,25 +47,26 @@ public:
 	inline bool WaitForSignal(DWORD dwMilliSec = INFINITE) const assert_reflect_to(DWORD ret, (ret = WaitForSingleObject(self, dwMilliSec)) != WAIT_FAILED, ret == WAIT_OBJECT_0);
 	inline bool WaitForAbandon(DWORD dwMilliSec = INFINITE) const assert_reflect_to(DWORD ret, (ret = WaitForSingleObject(self, dwMilliSec)) != WAIT_FAILED, ret == WAIT_ABANDONED);
 
-	//	inline bool GetInformation(LPDWORD lpdwFlags) const reflect_as(GetHandleInformation(self, lpdwFlags));
+//	inline bool GetInformation(LPDWORD lpdwFlags) const reflect_as(GetHandleInformation(self, lpdwFlags));
 //	inline bool SetInformation(DWORD dwMask, DWORD dwFlags) reflect_as(SetHandleInformation(self, dwMask, dwFlags));
 
-public: // Property - Inherit
+//public: // Property - Inherit
 	//	/* W */ inline bool Inherit()
 	//	/* R */ inline bool Inherit() const assert_rlect
-public: // Property - Inherit
+// public: // Property - Inherit
 
 	inline operator bool() const reflect_as(hObject && hObject != INVALID_HANDLE_VALUE);
 	inline operator const Handle() const reflect_as(reuse_as<Handle>(self));
 
 	inline Child &operator=(Child &obj) reflect_to_child(std::swap(obj.hObject, hObject));
 	inline Child &operator=(Child &&obj) reflect_to_child(std::swap(obj.hObject, hObject));
+	inline const Child &operator=(const Child &obj) const reflect_to_child(std::swap(obj.hObject, hObject));
 
 	inline operator HANDLE() const reflect_as(hObject);
 
 	inline static auto &Attach(HANDLE &hObj) reflect_as(reuse_as<Child>(hObj));
 };
-#define Handle_Based(name) name : public HandleBase<name>
+#define BaseOf_Handle(name) name : public WX::HandleBase<name>
 #pragma endregion
 
 #pragma region Memory
@@ -118,7 +124,7 @@ enum_flags(HeapAllocFlag, UINT,
 using HAF = HeapAllocFlag;
 class Heap;
 using CHeap = RefAs<Heap>;
-class Handle_Based(Heap) {
+class BaseOf_Handle(Heap) {
 protected:
 	using super = HandleBase<Heap>;
 	Heap(HANDLE hHeap) : super(hHeap) {}
@@ -309,10 +315,10 @@ public:
 	template<size_t len> StringBase(const arrayof<CharType, len> &str) : lpsz(const_cast<CharType *>(str)), Len(len - 1), Flags(STR_READONLY) {}
 	template<size_t len> StringBase(const ConstArray<CharType, len> &str) : StringBase(str.array) {}
 
-	//template<size_t len> StringBase(const ACHAR(&str)[len]) : lpsz(const_cast<LPTSTR>(str)), Len(len - 1), Flags(STR_READONLY) {}
-
-	//template<size_t len> StringBase(const ConstArray<ACHAR, len> &str, CodePages cp = CodePages::Active) : StringBase(str.array, cp) {}
-
+//	template<size_t len> StringBase(const ACHAR(&str)[len]) : lpsz(const_cast<LPTSTR>(str)), Len(len - 1), Flags(STR_READONLY) {}
+//
+//	template<size_t len> StringBase(const ConstArray<ACHAR, len> &str, CodePages cp = CodePages::Active) : StringBase(str.array, cp) {}
+//
 //	template<size_t len> StringBase(const ACHAR(&str)[len], CodePages cp = CodePages::Active) {
 //		int tLength;
 //#ifdef UNICODE
